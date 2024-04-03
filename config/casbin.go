@@ -32,15 +32,15 @@ func init() {
 			// },
 
 			"cache": map[string]any{
-			    "enabled": true,
-                // goravel cache store
-			    "store": "default",
-			    "key": "casbin",
-			    "ttl": 60 * 60,
+				"enabled": true,
+				// goravel cache store
+				"store": "default",
+				"key":   "casbin",
+				"ttl":   60 * 60,
 			},
 		},
 		// 第二个 Casbin 配置, 注意!, 需要自己创建对应的数据库表
-        "second": map[string]any{
+		"second": map[string]any{
 			"model": map[string]any{
 				"config_type":      "file",
 				"config_file_path": path.Config() + "casbin-rbac-model.conf",
@@ -62,10 +62,10 @@ func init() {
 
 			// TODO: Casbin Cache
 			"cache": map[string]any{
-			    "enabled": false,
-			    "store": "default",
-			    "key": "casbin",
-			    "ttl": 24 * 60,
+				"enabled": false,
+				"store":   "default",
+				"key":     "casbin",
+				"ttl":     24 * 60,
 			},
 		},
 	})

@@ -9,6 +9,7 @@ var App foundation.Application
 type ServiceProvider struct {
 }
 
+// Register the service provider.
 func (receiver *ServiceProvider) Register(app foundation.Application) {
 	App = app
 
