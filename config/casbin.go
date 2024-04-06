@@ -17,9 +17,10 @@ func init() {
 				"config_file_path": path.Config() + "casbin-rbac-model.conf",
 				"config_text":      "",
 			},
-			// TODO: Casbin adapter .
+			// TODO: Casbin adapter . it is default adapter
 			"adapter": "",
 
+			// goravel database type
 			"database": map[string]any{
 				"connection":  "",
 				"rules_table": "casbin_rules",
@@ -31,42 +32,43 @@ func init() {
 			//     "logger": "log",
 			// },
 
+			// store cache for goravel cache
 			"cache": map[string]any{
 				"enabled": true,
 				// goravel cache store
-				"store": "default",
+				"store": "memory",
 				"key":   "casbin",
 				"ttl":   60 * 60,
 			},
 		},
 		// 第二个 Casbin 配置, 注意!, 需要自己创建对应的数据库表
-		"second": map[string]any{
-			"model": map[string]any{
-				"config_type":      "file",
-				"config_file_path": path.Config() + "casbin-rbac-model.conf",
-				"config_text":      "",
-			},
-			// TODO: Casbin adapter .
-			"adapter": "",
+		// "second": map[string]any{
+		// 	"model": map[string]any{
+		// 		"config_type":      "file",
+		// 		"config_file_path": path.Config() + "casbin-rbac-model.conf",
+		// 		"config_text":      "",
+		// 	},
+		// 	// TODO: Casbin adapter .
+		// 	"adapter": "",
 
-			"database": map[string]any{
-				"connection":  "",
-				"rules_table": "casbin_rules_second",
-			},
+		// 	"database": map[string]any{
+		// 		"connection":  "",
+		// 		"rules_table": "casbin_rules_second",
+		// 	},
 
-			// TODO: Casbin Logger
-			// "log": map[string]any{
-			//     "enabled": false,
-			//     "logger": "log",
-			// },
+		// 	// TODO: Casbin Logger
+		// 	// "log": map[string]any{
+		// 	//     "enabled": false,
+		// 	//     "logger": "log",
+		// 	// },
 
-			// TODO: Casbin Cache
-			"cache": map[string]any{
-				"enabled": false,
-				"store":   "default",
-				"key":     "casbin",
-				"ttl":     24 * 60,
-			},
-		},
+		// 	// TODO: Casbin Cache
+		// 	"cache": map[string]any{
+		// 		"enabled": false,
+		// 		"store":   "default",
+		// 		"key":     "casbin",
+		// 		"ttl":     24 * 60,
+		// 	},
+		// },
 	})
 }
