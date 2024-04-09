@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"github.com/casbin/casbin/v2/model"
+	"github.com/casbin/casbin/v2/persist"
 	"github.com/goravel/framework/facades"
 	"github.com/wcz0/goravel-authz/models"
 )
@@ -24,22 +25,29 @@ func NewAdapter() *Adapter {
 }
 
 // SavePolicy saves
-func (a *Adapter) SavePolicy(model model.Model) {
+func (a *Adapter) SavePolicy(model model.Model) error {
 	for ptype, ast := range model["p"] {
 		for _, rule := range ast.Policy {
-			a.savePolicyLine(ptype, rule)
+			err := a.savePolicyLine(ptype, rule)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
 	for ptype, ast := range model["g"] {
 		for _, rule := range ast.Policy {
-			a.savePolicyLine(ptype, rule)
+			err := a.savePolicyLine(ptype, rule)
+			if err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // AddPolicy adds a policy rule to the storage.
-func (a *Adapter) savePolicyLine(ptype string, rule []string) {
+func (a *Adapter) savePolicyLine(ptype string, rule []string) error {
 	a.eloquent = models.Rule{PType: ptype}
 	if len(rule) > 0 {
 		a.eloquent.V0 = rule[0]
@@ -60,29 +68,80 @@ func (a *Adapter) savePolicyLine(ptype string, rule []string) {
 		a.eloquent.V5 = rule[5]
 	}
 	// Save the rule to the database
-	facades.Orm().Query().Create(&a.eloquent)
-}
-
-func (a *Adapter) LoadPolicy(model model.Model) {
-	// TODO: 从缓存读取
-
-
-	// return nil
-}
-
-func (a *Adapter) loadPolicyLine(sec string, ptype string, rule []string) {
-	// return nil
-}
-
-func (a *Adapter) AddPolicy(sec string, ptype string, rule []string) error {
+	err := facades.Orm().Query().Create(&a.eloquent)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
+/**
+ * Loads all policy rules from the storage.
+ */
+func (a *Adapter) LoadPolicy(model model.Model) error {
+	row, _ := a.eloquent.GetAllFromCache()
+	for _, rule := range row {
+		err := a.loadPolicyLine(rule, model)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+
+func (a *Adapter) loadPolicyLine(rule models.Rule, model model.Model) error {
+	var p = []string{rule.PType, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5}
+	i := len(p) - 1
+	for p[i] == "" {
+		i--
+	}
+	i += 1
+	p = p[:i]
+	err := persist.LoadPolicyArray(p, model)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+/**
+ * Adds a policy rule to the storage.
+ */
+func (a *Adapter) AddPolicy(sec string, ptype string, rule []string) error {
+	err := a.savePolicyLine(ptype, rule)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+/**
+ * Removes a policy rule from the storage.
+ */
 func (a *Adapter) RemovePolicy(sec string, ptype string, rule []string) error {
+	query := facades.Orm().Query().Where("p_type", ptype)
+	for i, v := range rule {
+		query = query.Where("v"+string(rune(i)), v)
+	}
+	_, err := query.Delete(&a.eloquent)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (a *Adapter) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) error {
+	query := facades.Orm().Query().Where("p_type", ptype)
+	var removeRules []map[string]any
+	for _, v := range fieldValues {
+		// if fieldIndex <=
+	}
+	return nil
+}
+
+
+func (a *Adapter) loadFilteredPolicy(model model.Model, filter any) error {
 	return nil
 }
 

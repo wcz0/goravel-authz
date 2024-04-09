@@ -22,7 +22,7 @@ func init() {
 
 			// goravel database type
 			"database": map[string]any{
-				"connection":  "",
+				"connection":  "mysql",
 				"rules_table": "casbin_rules",
 			},
 
