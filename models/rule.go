@@ -122,6 +122,9 @@ func (r *Rule) RefreshCache() {
 	r.GetAllFromCache()
 }
 
+/**
+ * Dispatches events.
+ */
 func (r *Rule) DispatchesEvents() map[contractsorm.EventType]func(contractsorm.Event) error {
 	return map[contractsorm.EventType]func(contractsorm.Event) error{
 

@@ -7,13 +7,6 @@ import (
 	"github.com/wcz0/goravel-authz/models"
 )
 
-// func savePolicyLine(ptype string, rule []string) error {
-// 	return nil
-// }
-
-// func loadPolicyLine(line string, model Model) {
-
-// }
 type Adapter struct {
 	eloquent models.Rule
 }
@@ -89,7 +82,6 @@ func (a *Adapter) LoadPolicy(model model.Model) error {
 	return nil
 }
 
-
 func (a *Adapter) loadPolicyLine(rule models.Rule, model model.Model) error {
 	var p = []string{rule.PType, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5}
 	i := len(p) - 1
@@ -131,17 +123,32 @@ func (a *Adapter) RemovePolicy(sec string, ptype string, rule []string) error {
 	return nil
 }
 
+/**
+ * Removes policy rules that match the filter from the storage.
+ */
 func (a *Adapter) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int, fieldValues ...string) error {
+	// var rules []models.Rule
 	query := facades.Orm().Query().Where("p_type", ptype)
-	var removeRules []map[string]any
-	for _, v := range fieldValues {
-		// if fieldIndex <=
+	// var removeRules []map[string]any
+	for i := range make([]int, 5) {
+		if fieldIndex <= i && i < fieldIndex+len(fieldValues) {
+			if fieldValues[i-fieldIndex] != "" {
+				query = query.Where("v"+string(rune(i)), fieldValues[i-fieldIndex])
+			}
+		}
+	}
+
+	// 保存删除的规则, 不知有何用意
+	// err := query.Get(&a.eloquent)
+	// if err != nil {
+	// 	return err
+	// }
+	// for _, rule := range rules {
+	// 	removeRules = append(removeRules, map[string]any{"p_type": rule.PType, "v0": rule.V0, "v1": rule.V1, "v2": rule.V2, "v3": rule.V3, "v4": rule.V4, "v5": rule.V5})
+	// }
+	_, err := query.Delete(&a.eloquent)
+	if err != nil {
+		return err
 	}
 	return nil
 }
-
-
-func (a *Adapter) loadFilteredPolicy(model model.Model, filter any) error {
-	return nil
-}
-

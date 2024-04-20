@@ -19,7 +19,12 @@ func (receiver *ServiceProvider) Register(app foundation.Application) {
 }
 
 func (receiver *ServiceProvider) Boot(app foundation.Application) {
+	// 配置文件&模型配置文件
 	app.Publishes("github.com/wcz0/goravel-casbin", map[string]string{
-		"config/casbin.go": app.ConfigPath("casbin.go"),
+		"config": app.ConfigPath(""),
+	})
+	// 数据库迁移文件
+	app.Publishes("github.com/wcz0/goravel-casbin", map[string]string{
+		"database": app.DatabasePath("migrations"),
 	})
 }

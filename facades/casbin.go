@@ -1,3 +1,7 @@
 package facades
 
-func Enforcer() 
+func Enforcer() {
+
+
+	return Enforcer()
+}
