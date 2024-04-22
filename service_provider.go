@@ -21,7 +21,10 @@ func (receiver *ServiceProvider) Register(app foundation.Application) {
 func (receiver *ServiceProvider) Boot(app foundation.Application) {
 	// 配置文件&模型配置文件
 	app.Publishes("github.com/wcz0/goravel-authz", map[string]string{
-		"config": app.ConfigPath(""),
+		"config/casbin.go": app.ConfigPath("casbin.go"),
+	})
+	app.Publishes("github.com/wcz0/goravel-authz", map[string]string{
+		"config/casbin-rbac-model.conf": app.ConfigPath("casbin-rbac-model.conf"),
 	})
 	// 数据库迁移文件
 	app.Publishes("github.com/wcz0/goravel-authz", map[string]string{

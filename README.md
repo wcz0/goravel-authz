@@ -1,4 +1,4 @@
-# aGoravel Authorization
+# Goravel Authorization
 
 Goravel-authz is an authorization extension library for Goravel. It is built upon Casbin, which supports various access control models such as ACL (Access Control List), RBAC (Role-Based Access Control), and ABAC (Attribute-Based Access Control).
 

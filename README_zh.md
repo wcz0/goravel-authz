@@ -30,7 +30,7 @@ go run . artisan migrate
 
 ```go
 // config/app.go
-import examplepackage "github.com/wcz0/goravel-authz"
+import goravel-authz "github.com/wcz0/goravel-authz"
 
 "providers": []foundation.ServiceProvider{
     ...
