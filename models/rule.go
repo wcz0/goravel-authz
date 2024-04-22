@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	contractsorm "github.com/goravel/framework/contracts/database/orm"
+	contracts "github.com/goravel/framework/contracts/database/orm"
 
 	"github.com/goravel/framework/contracts/cache"
 	"github.com/goravel/framework/database/orm"
@@ -14,7 +14,7 @@ import (
 type Rule struct {
 	orm.Model
 	Id    uint
-	PType string
+	Ptype string
 	V0    string
 	V1    string
 	V2    string
@@ -30,22 +30,10 @@ var (
 	Connection string
 )
 
-func NewRule() *Rule {
-	Guard = facades.Config().GetString("casbin.default")
-	Connection = config("database.connection", "").(string)
-	Table = config("database.rules_table", "").(string)
-	initCache()
-	return &Rule{}
-}
-
-func (r *Rule) Guard(guard string) {
+func NewRule(guard string) *Rule {
 	var once sync.Once
 	once.Do(func() {
-		if guard == "" {
-			Guard = facades.Config().GetString("casbin.default")
-		} else {
-			Guard = guard
-		}
+		Guard = guard
 		Connection = func(a, b string) string {
 			if a != "" {
 				return a
@@ -55,6 +43,7 @@ func (r *Rule) Guard(guard string) {
 		Table = config("database.rules_table", "").(string)
 		initCache()
 	})
+	return &Rule{}
 }
 
 // get policy from cache
@@ -75,7 +64,7 @@ func (r *Rule) GetAllFromCache() ([]Rule, error) {
 // get policy from orm
 func getPolicy() []Rule {
 	var rules = []Rule{}
-	err := facades.Orm().Query().Select("pyte", "v0", "v1", "v2", "v3", "v4", "v5").Get(&rules)
+	err := facades.Orm().Query().Select("ptype", "v0", "v1", "v2", "v3", "v4", "v5").Get(&rules)
 	if err != nil {
 		return nil
 	}
@@ -125,15 +114,15 @@ func (r *Rule) RefreshCache() {
 /**
  * Dispatches events.
  */
-func (r *Rule) DispatchesEvents() map[contractsorm.EventType]func(contractsorm.Event) error {
-	return map[contractsorm.EventType]func(contractsorm.Event) error{
+func (r *Rule) DispatchesEvents() map[contracts.EventType]func(contracts.Event) error {
+	return map[contracts.EventType]func(contracts.Event) error{
 
-		contractsorm.EventSaved: func(event contractsorm.Event) error {
+		contracts.EventSaved: func(event contracts.Event) error {
 			r.RefreshCache()
 			return nil
 		},
 
-		contractsorm.EventDeleted: func(event contractsorm.Event) error {
+		contracts.EventDeleted: func(event contracts.Event) error {
 			r.RefreshCache()
 			return nil
 		},

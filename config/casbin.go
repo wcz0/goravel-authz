@@ -13,9 +13,11 @@ func init() {
 
 		"basic": map[string]any{
 			"model": map[string]any{
+				// TODO: Casbin model text
 				"config_type":      "file",
 				"config_file_path": path.Config() + "casbin-rbac-model.conf",
-				"config_text":      "",
+				// TODO: Casbin model text
+				// "config_text":      "",
 			},
 			// TODO: Casbin adapter . it is default adapter
 			"adapter": "",
@@ -42,33 +44,25 @@ func init() {
 			},
 		},
 		// 第二个 Casbin 配置, 注意!, 需要自己创建对应的数据库表
-		// "second": map[string]any{
-		// 	"model": map[string]any{
-		// 		"config_type":      "file",
-		// 		"config_file_path": path.Config() + "casbin-rbac-model.conf",
-		// 		"config_text":      "",
-		// 	},
-		// 	// TODO: Casbin adapter .
-		// 	"adapter": "",
+		"second": map[string]any{
+			"model": map[string]any{
+				"config_type":      "file",
+				"config_file_path": path.Config() + "casbin-rbac-model.conf",
+			},
 
-		// 	"database": map[string]any{
-		// 		"connection":  "",
-		// 		"rules_table": "casbin_rules_second",
-		// 	},
 
-		// 	// TODO: Casbin Logger
-		// 	// "log": map[string]any{
-		// 	//     "enabled": false,
-		// 	//     "logger": "log",
-		// 	// },
+			"database": map[string]any{
+				"connection":  "mysql",
+				"rules_table": "casbin_rules_second",
+			},
 
-		// 	// TODO: Casbin Cache
-		// 	"cache": map[string]any{
-		// 		"enabled": false,
-		// 		"store":   "default",
-		// 		"key":     "casbin",
-		// 		"ttl":     24 * 60,
-		// 	},
-		// },
+
+			"cache": map[string]any{
+				"enabled": false,
+				"store":   "default",
+				"key":     "casbin",
+				"ttl":     24 * 60,
+			},
+		},
 	})
 }

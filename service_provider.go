@@ -2,7 +2,7 @@ package goravelcasbin
 
 import "github.com/goravel/framework/contracts/foundation"
 
-const Binding = "goravelcasbin"
+const Binding = "casbin"
 
 var App foundation.Application
 
@@ -14,7 +14,7 @@ func (receiver *ServiceProvider) Register(app foundation.Application) {
 	App = app
 
 	app.Bind(Binding, func(app foundation.Application) (any, error) {
-		return nil, nil
+		return NewEnforcer(), nil
 	})
 }
 
@@ -28,3 +28,5 @@ func (receiver *ServiceProvider) Boot(app foundation.Application) {
 		"database": app.DatabasePath("migrations"),
 	})
 }
+
+

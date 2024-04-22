@@ -8,12 +8,12 @@ import (
 )
 
 type Adapter struct {
-	eloquent models.Rule
+	eloquent *models.Rule
 }
 
-func NewAdapter() *Adapter {
+func NewAdapter(r *models.Rule) *Adapter {
 	return &Adapter{
-		eloquent: models.Rule{}, // Replace models.Rule with a valid expression that represents an instance of the models.Rule type
+		eloquent: r, // Replace models.Rule with a valid expression that represents an instance of the models.Rule type
 	}
 }
 
@@ -41,7 +41,7 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 
 // AddPolicy adds a policy rule to the storage.
 func (a *Adapter) savePolicyLine(ptype string, rule []string) error {
-	a.eloquent = models.Rule{PType: ptype}
+	a.eloquent.Ptype = ptype
 	if len(rule) > 0 {
 		a.eloquent.V0 = rule[0]
 	}
@@ -83,7 +83,7 @@ func (a *Adapter) LoadPolicy(model model.Model) error {
 }
 
 func (a *Adapter) loadPolicyLine(rule models.Rule, model model.Model) error {
-	var p = []string{rule.PType, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5}
+	var p = []string{rule.Ptype, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5}
 	i := len(p) - 1
 	for p[i] == "" {
 		i--
