@@ -1,4 +1,4 @@
-package goravelcasbin
+package authz
 
 import "github.com/goravel/framework/contracts/foundation"
 

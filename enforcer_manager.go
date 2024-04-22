@@ -1,4 +1,4 @@
-package goravelcasbin
+package authz
 
 import (
 	"github.com/casbin/casbin/v2"
