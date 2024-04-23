@@ -14,6 +14,18 @@ Goravel-authz is 是 goravel 的授权扩展库.
 go get -u github.com/wcz0/goravel-authz
 ```
 
+在 config/app.goproviders 注册 provider
+
+```go
+// config/app.go
+import gauthz "github.com/wcz0/goravel-authz"
+
+"providers": []foundation.ServiceProvider{
+    ...
+    &gauthz.ServiceProvider{},
+}
+```
+
 执行命令, 发布资源
 
 ```shell
@@ -26,17 +38,7 @@ go run . artisan vendor:publish --package=github.com/wcz0/goravel-authz
 go run . artisan migrate
 ```
 
-在 config/app.goproviders 注册 provider
 
-```go
-// config/app.go
-import goravel-authz "github.com/wcz0/goravel-authz"
-
-"providers": []foundation.ServiceProvider{
-    ...
-    &goravel-authz.ServiceProvider{},
-}
-```
 
 ## 使用
 

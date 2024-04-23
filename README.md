@@ -12,6 +12,20 @@ Install the Go package:
 go get -u github.com/wcz0/goravel-authz
 ```
 
+Register the provider in your config/app.go file:
+
+```go
+// config/app.go
+import gauthz "github.com/wcz0/goravel-authz"
+
+// ...
+
+"providers": []foundation.ServiceProvider{
+    // ...
+    &gauthz.ServiceProvider{},
+},
+```
+
 Execute the command to publish resources:
 
 ```shell
@@ -24,19 +38,6 @@ Run the migration command for the database:
 go run . artisan migrate
 ```
 
-Register the provider in your config/app.go file:
-
-```go
-// config/app.go
-import "github.com/wcz0/goravel-authz"
-
-// ...
-
-"providers": []foundation.ServiceProvider{
-    // ...
-    &goravel_authz.ServiceProvider{},
-},
-```
 
 ## Usage
 
