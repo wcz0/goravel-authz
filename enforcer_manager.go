@@ -12,14 +12,19 @@ var Guards = make(map[string]*casbin.Enforcer)
 
 // 创建 enforcer 实例
 type EnforcerManager struct {
+	*casbin.Enforcer
 }
 
-func NewEnforcer() *casbin.Enforcer {
-	return guard("")
+func NewEnforcer() *EnforcerManager {
+	return &EnforcerManager{
+		Enforcer: guard(""),
+	}
 }
 
-func (e *EnforcerManager) Guard(g string) *casbin.Enforcer {
-	return  guard(g)
+func (e *EnforcerManager) Guard(g string) *EnforcerManager {
+	return  &EnforcerManager{
+		Enforcer: guard(g),
+	}
 }
 
 func guard(g string) *casbin.Enforcer {
