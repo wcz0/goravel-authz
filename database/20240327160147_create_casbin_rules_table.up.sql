@@ -10,4 +10,3 @@ CREATE TABLE casbin_rules  (
   PRIMARY KEY (`id`),
   UNIQUE INDEX(`ptype`, `v0`, `v1`, `v2`, `v3`, `v4`, `v5`)
 );
--- create table
