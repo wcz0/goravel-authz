@@ -18,11 +18,11 @@ go get -u github.com/wcz0/goravel-authz
 
 ```go
 // config/app.go
-import gauthz "github.com/wcz0/goravel-authz"
+import "github.com/wcz0/goravel-authz"
 
 "providers": []foundation.ServiceProvider{
     ...
-    &gauthz.ServiceProvider{},
+    &authz.ServiceProvider{},
 }
 ```
 
@@ -39,22 +39,15 @@ go run . artisan migrate
 ```
 
 
-
 ## 使用
 
-facades.enforcer().GetPolicy()
+facades.Enforcer().GetPolicy()
 
 ```go
-import gauthz "github.com/wcz-/goravel-authz/facades"
+import authz "github.com/wcz-/goravel-authz/facades"
 
-e := gauthz.Enforcer()
+e := authz.Enforcer()
 policy := e.GetPolicy()
-
-// get enforce instance
-e := app.Make('casbin')
-
-
-
 
 ```
 
@@ -64,3 +57,4 @@ e := app.Make('casbin')
 - 中间件实现
 - 日志处理
 - 单元测试 编写
+- 多个 adapter 支持

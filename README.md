@@ -4,6 +4,8 @@ Goravel-authz is an authorization extension library for Goravel. It is built upo
 
 Before using Goravel-authz, you should first familiarize yourself with all aspects of working with Casbin.
 
+[中文文档](./README_zh.md)
+
 ## Installation
 
 Install the Go package:
@@ -16,13 +18,13 @@ Register the provider in your config/app.go file:
 
 ```go
 // config/app.go
-import gauthz "github.com/wcz0/goravel-authz"
+import "github.com/wcz0/goravel-authz"
 
 // ...
 
 "providers": []foundation.ServiceProvider{
     // ...
-    &gauthz.ServiceProvider{},
+    &authz.ServiceProvider{},
 },
 ```
 
@@ -43,15 +45,14 @@ go run . artisan migrate
 
 Accessing policies through the facade:
 
-```go
-import gauthz "github.com/wcz0/goravel-authz/facades"
+facades.Enforcer().GetPolicy()
 
-// Get the enforcer instance
-e := gauthz.Enforcer()
+```go
+import authz "github.com/wcz-/goravel-authz/facades"
+
+e := authz.Enforcer()
 policy := e.GetPolicy()
 
-// Alternatively, retrieve the enforcer instance from the service container
-e := app.Make("casbin")
 ```
 
 ## Future Developments:

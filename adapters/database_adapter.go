@@ -11,9 +11,9 @@ type Adapter struct {
 	eloquent *models.Rule
 }
 
-func NewAdapter(r *models.Rule) *Adapter {
+func NewAdapter() *Adapter {
 	return &Adapter{
-		eloquent: r, // Replace models.Rule with a valid expression that represents an instance of the models.Rule type
+		eloquent: &models.Rule{}, // Replace models.Rule with a valid expression that represents an instance of the models.Rule type
 	}
 }
 
@@ -67,6 +67,8 @@ func (a *Adapter) savePolicyLine(ptype string, rule []string) error {
 	}
 	return nil
 }
+
+
 
 /**
  * Loads all policy rules from the storage.

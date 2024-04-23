@@ -7,12 +7,10 @@ import (
 	contracts "github.com/goravel/framework/contracts/database/orm"
 
 	"github.com/goravel/framework/contracts/cache"
-	"github.com/goravel/framework/database/orm"
 	"github.com/goravel/framework/facades"
 )
 
 type Rule struct {
-	orm.Model
 	Id    uint
 	Ptype string
 	V0    string
@@ -26,21 +24,21 @@ type Rule struct {
 var (
 	Store      cache.Driver
 	Guard      string
-	Table      string
-	Connection string
+	// Table      string
+	// Connection string
 )
 
 func NewRule(guard string) *Rule {
 	var once sync.Once
 	once.Do(func() {
 		Guard = guard
-		Connection = func(a, b string) string {
-			if a != "" {
-				return a
-			}
-			return b
-		}(config("database.connection", "").(string), facades.Config().GetString("database.default"))
-		Table = config("database.rules_table", "").(string)
+		// Connection = func(a, b string) string {
+		// 	if a != "" {
+		// 		return a
+		// 	}
+		// 	return b
+		// }(config("database.connection", "").(string), facades.Config().GetString("database.default"))
+		// Table = config("database.rules_table", "").(string)
 		initCache()
 	})
 	return &Rule{}
@@ -48,7 +46,7 @@ func NewRule(guard string) *Rule {
 
 // get policy from cache
 func (r *Rule) GetAllFromCache() ([]Rule, error) {
-	if !facades.Config().GetBool("casbin.basic.cache.enabled") {
+	if !config("cache.enabled", false).(bool) {
 		return getPolicy(), nil
 	} else {
 		result, err := Store.Remember(config("cache.key", "").(string), time.Duration(config("cache.ttl", 60).(int))*time.Second, func() (any, error) {
@@ -72,18 +70,20 @@ func getPolicy() []Rule {
 }
 
 func (r *Rule) TableName() string {
-	return Table
+	// return Table
+	return "casbin_rules"
 }
 
 func (r *Rule) Connection() string {
-	return Connection
+	// return Connection
+	return "mysql"
 }
 
 /**
  * Gets config value by key.
  */
 func config(key string, defaultValue any) any {
-	return facades.Config().GetString("casbin."+Guard+"."+key, defaultValue)
+	return facades.Config().Get("casbin."+Guard+"."+key, defaultValue)
 }
 
 /**
