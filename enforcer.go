@@ -14,34 +14,32 @@ type EnforcerManager struct {
 }
 
 func NewEnforcer(g string) *casbin.Enforcer {
+	config := facades.Config()
 	if g == "" {
-		g = facades.Config().GetString("casbin.default")
+		g = config.GetString("casbin.default")
 	}
-
+	ruleImpl := config.Get("casbin.models." + g)
+	var rule adapters.Rule = ruleImpl.(adapters.Rule)
+	configType, contextArg := rule.Model()
 	var m model.Model
-	configType := config(g, "model.config_type").(string)
 	if configType == "file" {
-		filename := config(g, "model.config_file_path").(string)
-		path := path.Config(filename)
-		model, err := model.NewModelFromFile(path)
+		path := path.Config(contextArg)
+		modelInstance, err := model.NewModelFromFile(path)
 		if err != nil {
-			panic("加载 model 文件失败")
+			panic("加载 model 文件失败: " + err.Error())
 		}
-		m = model
+		m = modelInstance
 	} else if configType == "text" {
-		model, err := model.NewModelFromString(config(g, "model.config_text").(string))
+		modelInstance, err := model.NewModelFromString(contextArg)
 		if err != nil {
-			panic("加载 model 文本失败")
+			panic("加载 model 文本失败: " + err.Error())
 		}
-		m = model
+		m = modelInstance
 	}
-	e, err := casbin.NewEnforcer(m, adapters.NewAdapter())
+	a := adapters.NewAdapter(rule)
+	e, err := casbin.NewEnforcer(m, a)
 	if err != nil {
-		panic("创建 enforcer 失败")
+		panic("创建 enforcer 失败: " + err.Error())
 	}
 	return e
-}
-
-func config(guard string, key string) any {
-	return facades.Config().Get("casbin."+guard+"."+key, "")
 }

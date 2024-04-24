@@ -1,12 +1,8 @@
 package models
 
 import (
-	"sync"
-	"time"
-
 	contracts "github.com/goravel/framework/contracts/database/orm"
 
-	"github.com/goravel/framework/contracts/cache"
 	"github.com/goravel/framework/facades"
 )
 
@@ -21,94 +17,57 @@ type Rule struct {
 	V5    string
 }
 
-var (
-	Store      cache.Driver
-	Guard      string
-	// Table      string
-	// Connection string
-)
-
-func NewRule(guard string) *Rule {
-	var once sync.Once
-	once.Do(func() {
-		Guard = guard
-		// Connection = func(a, b string) string {
-		// 	if a != "" {
-		// 		return a
-		// 	}
-		// 	return b
-		// }(config("database.connection", "").(string), facades.Config().GetString("database.default"))
-		// Table = config("database.rules_table", "").(string)
-		initCache()
-	})
+func NewRule() *Rule {
 	return &Rule{}
 }
 
-// get policy from cache
-func (r *Rule) GetAllFromCache() ([]Rule, error) {
-	if !config("cache.enabled", false).(bool) {
-		return getPolicy(), nil
-	} else {
-		result, err := Store.Remember(config("cache.key", "").(string), time.Duration(config("cache.ttl", 60).(int))*time.Second, func() (any, error) {
-			return getPolicy(), nil
-		})
-		if err != nil {
-			return nil, err
-		}
-		return result.([]Rule), nil
-	}
-}
-
-// get policy from orm
-func getPolicy() []Rule {
-	var rules = []Rule{}
-	err := facades.Orm().Query().Select("ptype", "v0", "v1", "v2", "v3", "v4", "v5").Get(&rules)
-	if err != nil {
-		return nil
-	}
-	return rules
-}
-
 func (r *Rule) TableName() string {
-	// return Table
 	return "casbin_rules"
 }
 
 func (r *Rule) Connection() string {
-	// return Connection
 	return "mysql"
 }
 
 /**
- * Gets config value by key.
+ * Cache
  */
-func config(key string, defaultValue any) any {
-	return facades.Config().Get("casbin."+Guard+"."+key, defaultValue)
+func (r *Rule) Cache() (bool, string, string) {
+	return true, "memory", "casbin-key"
+	// return false, "", ""
 }
 
 /**
- * forget Cache
+ * casbin model
  */
-func forgetCache() {
-	facades.Cache().Forget(config("cache.key", "").(string))
-}
+func (r *Rule) Model() (string, string) {
+	return "file", "casbin-rbac-model.conf"
+	// return "text", `[request_definition]
+	// r = sub, obj, act
 
-/**
- * Initialize the cache store.
- */
-func initCache() {
-	Store = facades.Cache().Store(config("cache.store", "memory").(string))
+	// [policy_definition]
+	// p = sub, obj, act
+
+	// [role_definition]
+	// g = _, _
+
+	// [policy_effect]
+	// e = some(where (p.eft == allow))
+
+	// [matchers]
+	// m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`
 }
 
 /**
  * Refresh Cache
  */
 func (r *Rule) RefreshCache() {
-	if !config("cache.enabled", false).(bool) {
+	if ok, store, key := r.Cache(); !ok {
 		return
+	} else {
+		cache := facades.Cache().Store(store)
+		cache.Forget(key)
 	}
-	forgetCache()
-	r.GetAllFromCache()
 }
 
 /**
@@ -127,4 +86,60 @@ func (r *Rule) DispatchesEvents() map[contracts.EventType]func(contracts.Event) 
 			return nil
 		},
 	}
+}
+
+func (r *Rule) GetPtype() string {
+	return r.Ptype
+}
+
+func (r *Rule) SetPtype(value string) {
+	r.Ptype = value
+}
+
+func (r *Rule) GetV0() string {
+	return r.V0
+}
+
+func (r *Rule) SetV0(value string) {
+	r.V0 = value
+}
+
+func (r *Rule) GetV1() string {
+	return r.V1
+}
+
+func (r *Rule) SetV1(value string) {
+	r.V1 = value
+}
+
+func (r *Rule) GetV2() string {
+	return r.V2
+}
+
+func (r *Rule) SetV2(value string) {
+	r.V2 = value
+}
+
+func (r *Rule) GetV3() string {
+	return r.V3
+}
+
+func (r *Rule) SetV3(value string) {
+	r.V3 = value
+}
+
+func (r *Rule) GetV4() string {
+	return r.V4
+}
+
+func (r *Rule) SetV4(value string) {
+	r.V4 = value
+}
+
+func (r *Rule) GetV5() string {
+	return r.V5
+}
+
+func (r *Rule) SetV5(value string) {
+	r.V5 = value
 }

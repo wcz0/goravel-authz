@@ -1,19 +1,44 @@
 package adapters
 
 import (
+
+	"time"
+
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casbin/casbin/v2/persist"
 	"github.com/goravel/framework/facades"
-	"github.com/wcz0/goravel-authz/models"
 )
 
-type Adapter struct {
-	eloquent *models.Rule
+type Rule interface {
+	SetPtype(value string)
+	GetPtype() string
+	SetV0(value string)
+	GetV0() string
+	SetV1(value string)
+	GetV1() string
+	SetV2(value string)
+	GetV2() string
+	SetV3(value string)
+	GetV3() string
+	SetV4(value string)
+	GetV4() string
+	SetV5(value string)
+	GetV5() string
+	// model 类型, model 值
+	Model() (string, string)
+	// 是否从缓存中获取, 缓存store, 缓存key
+	Cache() (bool, string, string)
+	// 刷新缓存方式
+	RefreshCache()
 }
 
-func NewAdapter() *Adapter {
+type Adapter struct {
+	eloquent Rule
+}
+
+func NewAdapter(r Rule) *Adapter {
 	return &Adapter{
-		eloquent: &models.Rule{}, // Replace models.Rule with a valid expression that represents an instance of the models.Rule type
+		eloquent: r,
 	}
 }
 
@@ -41,40 +66,43 @@ func (a *Adapter) SavePolicy(model model.Model) error {
 
 // AddPolicy adds a policy rule to the storage.
 func (a *Adapter) savePolicyLine(ptype string, rule []string) error {
-	a.eloquent.Ptype = ptype
+	a.eloquent.SetPtype(ptype)
 	if len(rule) > 0 {
-		a.eloquent.V0 = rule[0]
+		a.eloquent.SetV0(rule[0])
 	}
 	if len(rule) > 1 {
-		a.eloquent.V1 = rule[1]
+		a.eloquent.SetV1(rule[1])
 	}
 	if len(rule) > 2 {
-		a.eloquent.V2 = rule[2]
+		a.eloquent.SetV2(rule[2])
 	}
 	if len(rule) > 3 {
-		a.eloquent.V3 = rule[3]
+		a.eloquent.SetV3(rule[3])
 	}
 	if len(rule) > 4 {
-		a.eloquent.V4 = rule[4]
+		a.eloquent.SetV4(rule[4])
 	}
 	if len(rule) > 5 {
-		a.eloquent.V5 = rule[5]
+		a.eloquent.SetV5(rule[5])
 	}
 	// Save the rule to the database
-	err := facades.Orm().Query().Create(&a.eloquent)
+	err := facades.Orm().Query().Create(a.eloquent)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-
-
 /**
  * Loads all policy rules from the storage.
  */
 func (a *Adapter) LoadPolicy(model model.Model) error {
-	row, _ := a.eloquent.GetAllFromCache()
+	// var row []Rule
+	// 是否从缓存中获取
+	row, err := a.getAllFromCache()
+	if err != nil {
+		return err
+	}
 	for _, rule := range row {
 		err := a.loadPolicyLine(rule, model)
 		if err != nil {
@@ -84,8 +112,44 @@ func (a *Adapter) LoadPolicy(model model.Model) error {
 	return nil
 }
 
-func (a *Adapter) loadPolicyLine(rule models.Rule, model model.Model) error {
-	var p = []string{rule.Ptype, rule.V0, rule.V1, rule.V2, rule.V3, rule.V4, rule.V5}
+func (a *Adapter) getAllFromCache() ([]Rule, error) {
+	// 是否从缓存中获取
+	if ok, store, key := a.eloquent.Cache(); ok {
+		cache := facades.Cache().Store(store)
+		ttl := 5 * 60 * time.Second
+		result, err := cache.Remember(key, ttl, func() (any, error) {
+			return a.getPolicy(), nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return result.([]Rule), nil
+	} else {
+		// 从数据库中获取
+		return a.getPolicy(), nil
+	}
+}
+
+// func (a *Adapter) (value string) {
+// 	a.eloquent.SetPtype(value)
+// }
+
+func (a *Adapter) getPolicy() []Rule {
+	var rules = []Rule{}
+	facades.Orm().Query().Select("ptype", "v0", "v1", "v2", "v3", "v4", "v5").Get(&rules)
+	return rules
+}
+
+func (a *Adapter) loadPolicyLine(rule Rule, model model.Model) error {
+	var p = []string{
+		rule.GetPtype(),
+		rule.GetV0(),
+		rule.GetV1(),
+		rule.GetV2(),
+		rule.GetV3(),
+		rule.GetV4(),
+		rule.GetV5(),
+	}
 	i := len(p) - 1
 	for p[i] == "" {
 		i--
@@ -118,7 +182,7 @@ func (a *Adapter) RemovePolicy(sec string, ptype string, rule []string) error {
 	for i, v := range rule {
 		query = query.Where("v"+string(rune(i)), v)
 	}
-	_, err := query.Delete(&a.eloquent)
+	_, err := query.Delete(a.eloquent)
 	if err != nil {
 		return err
 	}
@@ -141,14 +205,14 @@ func (a *Adapter) RemoveFilteredPolicy(sec string, ptype string, fieldIndex int,
 	}
 
 	// 保存删除的规则, 不知有何用意
-	// err := query.Get(&a.eloquent)
+	// err := query.Get(a.eloquent)
 	// if err != nil {
 	// 	return err
 	// }
 	// for _, rule := range rules {
 	// 	removeRules = append(removeRules, map[string]any{"p_type": rule.PType, "v0": rule.V0, "v1": rule.V1, "v2": rule.V2, "v3": rule.V3, "v4": rule.V4, "v5": rule.V5})
 	// }
-	_, err := query.Delete(&a.eloquent)
+	_, err := query.Delete(a.eloquent)
 	if err != nil {
 		return err
 	}
