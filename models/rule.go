@@ -7,7 +7,7 @@ import (
 )
 
 type Rule struct {
-	Id    uint
+	Id    uint `gorm:"primaryKey"`
 	Ptype string
 	V0    string
 	V1    string
