@@ -1,6 +1,6 @@
 # Goravel Authz
 
-Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin](https://casbin.org): ACL, RBAC and ABAC models backed by your own database table, with multiple independent enforcers and policy caching through the Goravel cache.
+Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin](https://casbin.org): ACL, RBAC and ABAC models backed by your own database table, with multiple independent enforcers, policy caching through the Goravel cache and route middleware.
 
 [中文文档](./README_zh.md)
 
@@ -131,6 +131,56 @@ import "github.com/wcz0/goravel-authz"
 err := authz.Reload("basic")
 ```
 
+## Middleware
+
+`middleware.Authz` protects routes with your policies. Register it after your authentication middleware:
+
+```go
+import (
+    "github.com/goravel/framework/contracts/route"
+    "github.com/wcz0/goravel-authz/middleware"
+)
+
+facades.Route().Middleware(middleware.Authz()).Group(func(router route.Router) {
+    router.Get("/admin/users", UserController{}.Index)
+})
+```
+
+The defaults are:
+
+- **guard**: `casbin.default` — use `middleware.WithGuard("admin")` for another model;
+- **subject**: the value stored in the request context by `middleware.SetSubject`;
+- **object**: the route pattern, `OriginPath()` (for example `/users/{id}`), falling back to `Path()`;
+- **action**: the HTTP method.
+
+An authentication middleware runs first and stores the subject:
+
+```go
+func Authenticate(ctx contractshttp.Context) {
+    middleware.SetSubject(ctx, currentUserID(ctx))
+    ctx.Request().Next()
+}
+```
+
+Resolvers can be replaced when the defaults do not fit:
+
+```go
+middleware.Authz(
+    middleware.WithGuard("admin"),
+    middleware.WithSubject(func(ctx contractshttp.Context) (string, error) {
+        return claimsFrom(ctx).Subject, nil
+    }),
+    middleware.WithObject(func(ctx contractshttp.Context) string {
+        return ctx.Request().Path()
+    }),
+    middleware.WithDenied(func(ctx contractshttp.Context, decision middleware.Decision) {
+        ctx.Response().Json(403, contractshttp.Json{"message": "Forbidden"}).Abort()
+    }),
+)
+```
+
+A request is allowed when `Enforce(subject, object, action)` returns true. A missing subject, a resolver error or a policy miss returns `403` with a JSON message; an enforcer error returns `500`. After another process changes the policies, call `authz.Reload` to refresh the local enforcer.
+
 ## Testing
 
 ```shell
@@ -141,6 +191,5 @@ The adapter tests run against a real SQLite database through the Goravel ORM, in
 
 ## Roadmap
 
-- HTTP middleware
 - Artisan commands to manage policies
 - Goravel logger integration

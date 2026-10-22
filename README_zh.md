@@ -1,6 +1,6 @@
 # Goravel Authz
 
-基于 [Casbin](https://casbin.org) 的 [Goravel](https://github.com/goravel/goravel) 授权扩展库：支持 ACL、RBAC、ABAC 模型，策略存放在你自己的数据库表中，可以同时运行多套互相独立的 Enforcer，并通过 Goravel 缓存加速策略加载。
+基于 [Casbin](https://casbin.org) 的 [Goravel](https://github.com/goravel/goravel) 授权扩展库：支持 ACL、RBAC、ABAC 模型，策略存放在你自己的数据库表中，可以同时运行多套互相独立的 Enforcer，通过 Goravel 缓存加速策略加载，并提供路由中间件。
 
 [English](./README.md)
 
@@ -130,6 +130,56 @@ import "github.com/wcz0/goravel-authz"
 err := authz.Reload("basic")
 ```
 
+## 中间件
+
+`middleware.Authz` 用策略保护路由，需要注册在认证中间件之后：
+
+```go
+import (
+    "github.com/goravel/framework/contracts/route"
+    "github.com/wcz0/goravel-authz/middleware"
+)
+
+facades.Route().Middleware(middleware.Authz()).Group(func(router route.Router) {
+    router.Get("/admin/users", UserController{}.Index)
+})
+```
+
+默认行为：
+
+- **guard**：`casbin.default`，可用 `middleware.WithGuard("admin")` 切换到其他模型；
+- **subject**：由 `middleware.SetSubject` 写入请求上下文的值；
+- **object**：路由模板 `OriginPath()`（例如 `/users/{id}`），为空时回退到 `Path()`；
+- **action**：HTTP 方法。
+
+认证中间件先运行，并写入 subject：
+
+```go
+func Authenticate(ctx contractshttp.Context) {
+    middleware.SetSubject(ctx, currentUserID(ctx))
+    ctx.Request().Next()
+}
+```
+
+默认行为不适用时可以替换解析逻辑：
+
+```go
+middleware.Authz(
+    middleware.WithGuard("admin"),
+    middleware.WithSubject(func(ctx contractshttp.Context) (string, error) {
+        return claimsFrom(ctx).Subject, nil
+    }),
+    middleware.WithObject(func(ctx contractshttp.Context) string {
+        return ctx.Request().Path()
+    }),
+    middleware.WithDenied(func(ctx contractshttp.Context, decision middleware.Decision) {
+        ctx.Response().Json(403, contractshttp.Json{"message": "Forbidden"}).Abort()
+    }),
+)
+```
+
+当 `Enforce(subject, object, action)` 返回 true 时放行。subject 缺失、解析器报错或策略未命中时返回 `403` 和 JSON 消息；Enforcer 出错时返回 `500`。其他进程修改策略后，调用 `authz.Reload` 让当前进程的 Enforcer 重新加载。
+
 ## 测试
 
 ```shell
@@ -140,6 +190,5 @@ go test ./...
 
 ## 路线图
 
-- HTTP 中间件
 - Artisan 命令管理策略
 - 接入 Goravel 日志
