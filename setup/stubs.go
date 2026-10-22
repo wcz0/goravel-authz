@@ -24,6 +24,18 @@ func init() {
 		"models": map[string]any{
 			"basic": models.NewRule(),
 		},
+
+		// Authorization logs are written through the Goravel logger. Denied
+		// requests are logged by default; allowed requests and Casbin's own
+		// diagnostics are opt-in.
+		"log": map[string]any{
+			"enabled": true,
+			// Empty uses the logging.default channel.
+			"channel": "",
+			"allowed": false,
+			"denied":  true,
+			"casbin":  false,
+		},
 	})
 }
 `

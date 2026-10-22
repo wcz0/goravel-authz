@@ -35,6 +35,13 @@ func init() {
         "models": map[string]any{
             "basic": models.NewRule(),
         },
+        "log": map[string]any{
+            "enabled": true,
+            "channel": "",
+            "allowed": false,
+            "denied":  true,
+            "casbin":  false,
+        },
     })
 }
 ```
@@ -192,6 +199,24 @@ go run . artisan authz:enforce admin /api/users GET --guard=admin
 
 写入会立即落库并刷新策略缓存。其他进程仍持有内存中的策略，需要调用 `authz.Reload` 或重启后才能看到变更。
 
+## 日志
+
+授权事件通过 Goravel 日志写入，沿用 `config/logging.go` 中配置的通道、级别和格式：
+
+```go
+"log": map[string]any{
+    "enabled": true,  // 总开关
+    "channel": "",    // 留空使用 logging.default
+    "allowed": false, // 放行的请求以 info 级别记录
+    "denied":  true,  // 拒绝的请求以 warning 级别记录
+    "casbin":  false, // 把 Casbin 内部日志以 debug 级别交给 Goravel
+},
+```
+
+拒绝记录包含 guard、subject、object、action 和 `reason`（`policy` 或 `missing subject`）。subject 解析失败以及 enforcer 创建、执行失败会以 error 级别记录并附带错误。enforcer 首次创建和 `authz.Reload` 以 info 级别记录。
+
+`casbin` 设为 true 后，Casbin 的 model、policy 和 enforce 输出会以 debug 级别写入同一通道；默认关闭，因为内容较多。在未启动 Goravel 应用的环境里包不会写日志，单元测试和独立工具无需配置 logger。
+
 ## 测试
 
 ```shell
@@ -199,7 +224,3 @@ go test ./...
 ```
 
 适配器测试通过 Goravel ORM 直接跑在真实的 SQLite 数据库上，包含缓存往返测试，不需要 Docker 或外部数据库。
-
-## 路线图
-
-- 接入 Goravel 日志

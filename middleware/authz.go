@@ -7,8 +7,10 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	contractshttp "github.com/goravel/framework/contracts/http"
+	contractslog "github.com/goravel/framework/contracts/log"
 
 	authz "github.com/wcz0/goravel-authz"
+	"github.com/wcz0/goravel-authz/internal/logging"
 )
 
 const (
@@ -56,6 +58,10 @@ type authzMiddleware struct {
 	action  ActionResolver
 	denied  DeniedHandler
 
+	logger     contractslog.Log
+	logAllowed bool
+	logDenied  bool
+
 	// open is replaced in tests.
 	open func(name string) (*casbin.SyncedEnforcer, error)
 }
@@ -67,12 +73,17 @@ type authzMiddleware struct {
 // SetSubject, the object is the route pattern (OriginPath) and the action is
 // the HTTP method. Every part can be replaced with an option.
 func Authz(options ...Option) contractshttp.Middleware {
+	settings := logging.Load()
+
 	m := &authzMiddleware{
-		subject: subjectFromContext,
-		object:  objectFromRequest,
-		action:  actionFromRequest,
-		denied:  denyWithJSON,
-		open:    authz.NewEnforcer,
+		subject:    subjectFromContext,
+		object:     objectFromRequest,
+		action:     actionFromRequest,
+		denied:     denyWithJSON,
+		logger:     settings.Logger(),
+		logAllowed: settings.Allowed,
+		logDenied:  settings.Denied,
+		open:       authz.NewEnforcer,
 	}
 
 	for _, option := range options {
@@ -94,7 +105,13 @@ func (m *authzMiddleware) Handle(ctx contractshttp.Context) {
 	decision := Decision{Guard: m.guard}
 
 	subject, err := m.subject(ctx)
-	if err != nil || subject == "" {
+	if err != nil {
+		m.logFailure("authz: subject resolver failed", decision, err)
+		m.denied(ctx, decision)
+		return
+	}
+	if subject == "" {
+		m.logDeniedRequest(decision, "missing subject")
 		m.denied(ctx, decision)
 		return
 	}
@@ -104,22 +121,68 @@ func (m *authzMiddleware) Handle(ctx contractshttp.Context) {
 
 	enforcer, err := m.open(m.guard)
 	if err != nil {
+		m.logFailure("authz: enforcer unavailable", decision, err)
 		abortWithError(ctx, http.StatusInternalServerError, DefaultUnavailableMessage)
 		return
 	}
 
 	allowed, err := enforcer.Enforce(subject, decision.Object, decision.Action)
 	if err != nil {
+		m.logFailure("authz: enforce failed", decision, err)
 		abortWithError(ctx, http.StatusInternalServerError, DefaultUnavailableMessage)
 		return
 	}
 
 	if !allowed {
+		m.logDeniedRequest(decision, "policy")
 		m.denied(ctx, decision)
 		return
 	}
 
+	m.logAllowedRequest(decision)
+
 	ctx.Request().Next()
+}
+
+func (m *authzMiddleware) logAllowedRequest(decision Decision) {
+	if m.logger == nil || !m.logAllowed {
+		return
+	}
+
+	m.logger.With(decisionFields(decision)).Info("authz: access allowed")
+}
+
+func (m *authzMiddleware) logDeniedRequest(decision Decision, reason string) {
+	if m.logger == nil || !m.logDenied {
+		return
+	}
+
+	fields := decisionFields(decision)
+	fields["reason"] = reason
+	m.logger.With(fields).Warning("authz: access denied")
+}
+
+func (m *authzMiddleware) logFailure(message string, decision Decision, err error) {
+	if m.logger == nil {
+		return
+	}
+
+	fields := decisionFields(decision)
+	fields["error"] = err
+	m.logger.With(fields).Error(message)
+}
+
+func decisionFields(decision Decision) map[string]any {
+	fields := map[string]any{
+		"subject": decision.Subject,
+		"object":  decision.Object,
+		"action":  decision.Action,
+	}
+	if decision.Guard != "" {
+		fields["guard"] = decision.Guard
+	}
+
+	return fields
 }
 
 // WithGuard selects the Casbin model to check against. An empty guard uses

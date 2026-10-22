@@ -6,9 +6,11 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
+	"github.com/goravel/framework/contracts/log"
 	"github.com/goravel/framework/facades"
 	"github.com/goravel/framework/support/path"
 	"github.com/wcz0/goravel-authz/adapters"
+	"github.com/wcz0/goravel-authz/internal/logging"
 )
 
 var (
@@ -64,7 +66,15 @@ func Reload(name string) error {
 		}
 	}
 
-	return instance.LoadPolicy()
+	if err := instance.LoadPolicy(); err != nil {
+		return err
+	}
+
+	if logger := logging.Load().Logger(); logger != nil {
+		logger.With(map[string]any{"guard": name}).Info("authz: policies reloaded")
+	}
+
+	return nil
 }
 
 // Reset forgets every cached enforcer. It is mainly useful in tests and after
@@ -102,9 +112,22 @@ func enforcerFor(name string, rule adapters.Rule) (*casbin.SyncedEnforcer, error
 		return nil, fmt.Errorf("casbin: create enforcer %q: %w", name, err)
 	}
 
+	settings := logging.Load()
+	if logger := settings.Logger(); logger != nil {
+		attachLogger(instance, name, logger, settings.Casbin)
+		logger.With(map[string]any{"guard": name}).Info("authz: enforcer loaded")
+	}
+
 	enforcers[name] = instance
 
 	return instance, nil
+}
+
+// attachLogger routes Casbin's own diagnostics through the Goravel logger.
+// They stay disabled until casbin.log.casbin is enabled or the application
+// calls EnableLog at runtime.
+func attachLogger(instance *casbin.SyncedEnforcer, name string, logger log.Log, enabled bool) {
+	instance.SetLogger(logging.NewCasbinLogger(name, logger, enabled))
 }
 
 func resolveName(name string) string {

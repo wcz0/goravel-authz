@@ -35,6 +35,13 @@ func init() {
         "models": map[string]any{
             "basic": models.NewRule(),
         },
+        "log": map[string]any{
+            "enabled": true,
+            "channel": "",
+            "allowed": false,
+            "denied":  true,
+            "casbin":  false,
+        },
     })
 }
 ```
@@ -193,6 +200,24 @@ Values are passed straight to Casbin, so models with more tokens (domains, for e
 
 Writes go to the database and refresh the policy cache. Other processes keep their in-memory policies; call `authz.Reload` or restart them to pick up the change.
 
+## Logging
+
+Authorization events are written through the Goravel logger, so they use the channels, level and formatter configured in `config/logging.go`:
+
+```go
+"log": map[string]any{
+    "enabled": true,  // master switch
+    "channel": "",    // empty uses logging.default
+    "allowed": false, // log allowed requests at info level
+    "denied":  true,  // log denied requests at warning level
+    "casbin":  false, // forward Casbin diagnostics at debug level
+},
+```
+
+Denied requests carry the guard, subject, object, action and a `reason` (`policy` or `missing subject`). Subject resolver and enforcer failures are logged at error level with the error attached. Enforcer creation and `authz.Reload` are logged at info level.
+
+Set `casbin` to `true` to forward Casbin's model, policy and enforce output to the same channel at debug level. It is off by default because it is verbose. Outside a booted Goravel application the package stays silent, so unit tests and standalone tools need no logger.
+
 ## Testing
 
 ```shell
@@ -200,7 +225,3 @@ go test ./...
 ```
 
 The adapter tests run against a real SQLite database through the Goravel ORM, including the cache round trip, so no Docker or external database is required.
-
-## Roadmap
-
-- Goravel logger integration
