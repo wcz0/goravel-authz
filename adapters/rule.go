@@ -24,7 +24,8 @@ type Rule interface {
 	// Model returns the casbin model type ("file" or "text") and its value.
 	Model() (string, string)
 	// Cache reports whether policies should be cached, the cache store name
-	// and the cache key. The key must be unique per enforcer.
+	// and the cache key. An empty key is generated automatically from the
+	// model's table name, so every enforcer gets its own cache entry.
 	Cache() (bool, string, string)
 	// RefreshCache flushes the cached policies.
 	RefreshCache()

@@ -4,6 +4,7 @@ import (
 	contracts "github.com/goravel/framework/contracts/database/orm"
 
 	"github.com/goravel/framework/facades"
+	"github.com/goravel/framework/foundation"
 )
 
 type Rule struct {
@@ -65,11 +66,18 @@ func (r *Rule) Model() (string, string) {
  * Refresh Cache
  */
 func (r *Rule) RefreshCache() {
-	if ok, store, key := r.Cache(); !ok {
+	enabled, store, key := r.Cache()
+	if !enabled || key == "" || foundation.App == nil {
 		return
-	} else {
-		cache := facades.Cache().Store(store)
-		cache.Forget(key)
+	}
+
+	cache := facades.Cache()
+	if cache == nil {
+		return
+	}
+
+	if driver := cache.Store(store); driver != nil {
+		driver.Forget(key)
 	}
 }
 

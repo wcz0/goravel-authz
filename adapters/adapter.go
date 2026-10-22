@@ -14,13 +14,9 @@ import (
 // DefaultCacheTTL is used when the Rule does not implement CacheTTL.
 const DefaultCacheTTL = 5 * time.Minute
 
-var (
-	// ErrEmptyCacheKey is returned when caching is enabled without a key.
-	ErrEmptyCacheKey = errors.New("goravel-authz: cache is enabled but the cache key is empty")
-	// ErrUnexpectedCachedValue is returned when the cache driver returns an
-	// unexpected value type.
-	ErrUnexpectedCachedValue = errors.New("goravel-authz: unexpected cached policy value")
-)
+// ErrUnexpectedCachedValue is returned when the cache driver returns an
+// unexpected value type.
+var ErrUnexpectedCachedValue = errors.New("goravel-authz: unexpected cached policy value")
 
 // policyCache is the subset of a Goravel cache store used by the adapter.
 type policyCache interface {
@@ -137,8 +133,8 @@ func (a *Adapter) RemoveFilteredPolicy(_ string, ptype string, fieldIndex int, f
 
 // RefreshCache flushes the cached policies of this adapter's rule.
 func (a *Adapter) RefreshCache() error {
-	enabled, storeName, key := a.rule.Cache()
-	if !enabled || key == "" {
+	enabled, storeName, key := cacheSettings(a.rule)
+	if !enabled {
 		return nil
 	}
 
@@ -152,14 +148,8 @@ func (a *Adapter) RefreshCache() error {
 }
 
 func (a *Adapter) loadRows() ([]PolicyRow, error) {
-	enabled, storeName, key := a.rule.Cache()
-	if !enabled {
-		return a.store.Load()
-	}
-	if key == "" {
-		return nil, ErrEmptyCacheKey
-	}
-	if a.cacheOpen == nil {
+	enabled, storeName, key := cacheSettings(a.rule)
+	if !enabled || a.cacheOpen == nil {
 		return a.store.Load()
 	}
 
@@ -203,6 +193,31 @@ func decodeRows(value any) ([]PolicyRow, error) {
 	}
 
 	return rows, nil
+}
+
+// cacheSettings returns the effective cache configuration. When caching is
+// enabled without an explicit key, a stable key is derived from the model's
+// table name (or its type) so every enforcer gets its own cache entry.
+func cacheSettings(rule Rule) (bool, string, string) {
+	enabled, storeName, key := rule.Cache()
+	if !enabled {
+		return false, "", ""
+	}
+	if key == "" {
+		key = autoCacheKey(rule)
+	}
+
+	return true, storeName, key
+}
+
+func autoCacheKey(rule Rule) string {
+	if named, ok := rule.(interface{ TableName() string }); ok {
+		if table := named.TableName(); table != "" {
+			return "goravel-authz:" + table
+		}
+	}
+
+	return fmt.Sprintf("goravel-authz:%T", rule)
 }
 
 func cacheTTL(rule Rule) time.Duration {

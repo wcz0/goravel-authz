@@ -3,8 +3,10 @@ package adapters
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 
+	contractsorm "github.com/goravel/framework/contracts/database/orm"
 	"github.com/goravel/framework/facades"
 )
 
@@ -80,16 +82,24 @@ func (r policyRecord) row() PolicyRow {
 type ormStore struct {
 	rule Rule
 	mu   sync.Mutex
+	open func() contractsorm.Orm
 }
 
 // NewORMStore returns the default Store backed by the Goravel ORM.
 func NewORMStore(rule Rule) Store {
-	return &ormStore{rule: rule}
+	return &ormStore{
+		rule: rule,
+		open: func() contractsorm.Orm { return facades.Orm() },
+	}
+}
+
+func (s *ormStore) query() contractsorm.Query {
+	return s.open().Query()
 }
 
 func (s *ormStore) Load() ([]PolicyRow, error) {
 	var records []policyRecord
-	if err := facades.Orm().Query().Model(s.rule).Select(policyColumns...).Get(&records); err != nil {
+	if err := s.query().Model(s.rule).Select(policyColumns...).Get(&records); err != nil {
 		return nil, err
 	}
 
@@ -107,7 +117,33 @@ func (s *ormStore) Insert(row PolicyRow) error {
 
 	s.applyRow(row)
 
-	return facades.Orm().Query().Create(s.rule)
+	// The model instance is reused for every insert, so its primary key is
+	// omitted and left to the database after the first save filled it in.
+	if err := s.query().Omit("Id").Create(s.rule); err != nil {
+		return err
+	}
+
+	// GORM writes the generated key back into the model. Keeping it would
+	// turn the next Delete into "WHERE id = <previous row>", silently
+	// deleting nothing, so the key is cleared again.
+	s.resetPrimaryKey()
+
+	return nil
+}
+
+func (s *ormStore) resetPrimaryKey() {
+	value := reflect.ValueOf(s.rule)
+	if value.Kind() != reflect.Pointer || value.IsNil() {
+		return
+	}
+
+	value = value.Elem()
+	for _, name := range []string{"Id", "ID"} {
+		if field := value.FieldByName(name); field.IsValid() && field.CanSet() {
+			field.SetZero()
+			return
+		}
+	}
 }
 
 // applyRow copies the row onto the rule instance. Every column is reset first
@@ -130,7 +166,7 @@ func (s *ormStore) applyRow(row PolicyRow) {
 }
 
 func (s *ormStore) DeleteExact(ptype string, values []string) error {
-	query := facades.Orm().Query().Model(s.rule).Where("ptype", ptype)
+	query := s.query().Model(s.rule).Where("ptype", ptype)
 	for i, value := range values {
 		column, ok := policyColumn(i)
 		if !ok {
@@ -143,7 +179,7 @@ func (s *ormStore) DeleteExact(ptype string, values []string) error {
 }
 
 func (s *ormStore) DeleteFiltered(ptype string, fieldIndex int, values []string) error {
-	query := facades.Orm().Query().Model(s.rule).Where("ptype", ptype)
+	query := s.query().Model(s.rule).Where("ptype", ptype)
 	for i, value := range values {
 		if value == "" {
 			continue
@@ -160,7 +196,7 @@ func (s *ormStore) DeleteFiltered(ptype string, fieldIndex int, values []string)
 
 func (s *ormStore) DeleteAll() error {
 	// "1 = 1" keeps GORM's global delete protection satisfied.
-	_, err := facades.Orm().Query().Model(s.rule).Where("1 = 1").Delete(s.rule)
+	_, err := s.query().Model(s.rule).Where("1 = 1").Delete(s.rule)
 	return err
 }
 

@@ -14,7 +14,9 @@ func (receiver *ServiceProvider) Register(app foundation.Application) {
 	App = app
 
 	app.BindWith(Binding, func(app foundation.Application, parameters map[string]any) (any, error) {
-		return NewEnforcer(parameters["guard"].(string)), nil
+		guard, _ := parameters["guard"].(string)
+
+		return NewEnforcer(guard)
 	})
 }
 

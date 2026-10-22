@@ -1,6 +1,9 @@
 package authz
 
 import (
+	"fmt"
+	"sync"
+
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	"github.com/goravel/framework/facades"
@@ -8,48 +11,143 @@ import (
 	"github.com/wcz0/goravel-authz/adapters"
 )
 
-// 创建 enforcer 实例
-type EnforcerManager struct {
-	*casbin.Enforcer
+var (
+	enforcersMu sync.RWMutex
+	enforcers   = make(map[string]*casbin.SyncedEnforcer)
+
+	// adapterFactory is swapped by tests to inject a store.
+	adapterFactory = func(rule adapters.Rule) *adapters.Adapter {
+		return adapters.NewAdapter(rule)
+	}
+)
+
+// NewEnforcer returns the shared enforcer of the given model name.
+//
+// Enforcers are created on first use and kept in memory, so calling this on
+// every request only performs a map lookup. An empty name resolves to
+// casbin.default. Use Reload to pick up policies written by another process.
+func NewEnforcer(name string) (*casbin.SyncedEnforcer, error) {
+	name = resolveName(name)
+	if name == "" {
+		return nil, fmt.Errorf("casbin: no default model is configured")
+	}
+
+	if instance, ok := lookup(name); ok {
+		return instance, nil
+	}
+
+	rule, err := resolveRule(name)
+	if err != nil {
+		return nil, err
+	}
+
+	return enforcerFor(name, rule)
 }
 
-func NewEnforcer(g string) *casbin.Enforcer {
-	config := facades.Config()
-	if g == "" {
-		g = config.GetString("casbin.default")
+// Reload refreshes the policies of an existing enforcer, bypassing its
+// policy cache. It creates the enforcer when it was not loaded yet.
+func Reload(name string) error {
+	name = resolveName(name)
+	if name == "" {
+		return fmt.Errorf("casbin: no default model is configured")
 	}
-	ruleImpl := config.Get("casbin.models." + g)
-	var rule adapters.Rule
-	if ruleImpl == nil {
-		panic("casbin: model " + g + " is not defined in the casbin.models configuration")
-	}
-	rule, ok := ruleImpl.(adapters.Rule)
+
+	instance, ok := lookup(name)
 	if !ok {
-		panic("casbin: model " + g + " must implement adapters.Rule")
+		_, err := NewEnforcer(name)
+		return err
 	}
-	configType, contextArg := rule.Model()
-	var m model.Model
-	switch configType {
-	case "file":
-		modelPath := path.Config(contextArg)
-		modelInstance, err := model.NewModelFromFile(modelPath)
-		if err != nil {
-			panic("加载 model 文件失败: " + err.Error())
+
+	if adapter, ok := instance.GetAdapter().(*adapters.Adapter); ok {
+		if err := adapter.RefreshCache(); err != nil {
+			return err
 		}
-		m = modelInstance
-	case "text":
-		modelInstance, err := model.NewModelFromString(contextArg)
-		if err != nil {
-			panic("加载 model 文本失败: " + err.Error())
-		}
-		m = modelInstance
-	default:
-		panic("casbin: model " + g + " has an unsupported Model() type: " + configType)
 	}
-	a := adapters.NewAdapter(rule)
-	e, err := casbin.NewEnforcer(m, a)
+
+	return instance.LoadPolicy()
+}
+
+// Reset forgets every cached enforcer. It is mainly useful in tests and after
+// the casbin configuration changed at runtime.
+func Reset() {
+	enforcersMu.Lock()
+	defer enforcersMu.Unlock()
+
+	enforcers = make(map[string]*casbin.SyncedEnforcer)
+}
+
+func lookup(name string) (*casbin.SyncedEnforcer, bool) {
+	enforcersMu.RLock()
+	defer enforcersMu.RUnlock()
+
+	instance, ok := enforcers[name]
+	return instance, ok
+}
+
+func enforcerFor(name string, rule adapters.Rule) (*casbin.SyncedEnforcer, error) {
+	enforcersMu.Lock()
+	defer enforcersMu.Unlock()
+
+	if instance, ok := enforcers[name]; ok {
+		return instance, nil
+	}
+
+	m, err := buildModel(name, rule)
 	if err != nil {
-		panic("创建 enforcer 失败: " + err.Error())
+		return nil, err
 	}
-	return e
+
+	instance, err := casbin.NewSyncedEnforcer(m, adapterFactory(rule))
+	if err != nil {
+		return nil, fmt.Errorf("casbin: create enforcer %q: %w", name, err)
+	}
+
+	enforcers[name] = instance
+
+	return instance, nil
+}
+
+func resolveName(name string) string {
+	if name != "" {
+		return name
+	}
+
+	return facades.Config().GetString("casbin.default")
+}
+
+func resolveRule(name string) (adapters.Rule, error) {
+	entry := facades.Config().Get("casbin.models." + name)
+	if entry == nil {
+		return nil, fmt.Errorf("casbin: model %q is not defined under casbin.models", name)
+	}
+
+	rule, ok := entry.(adapters.Rule)
+	if !ok {
+		return nil, fmt.Errorf("casbin: model %q must implement adapters.Rule", name)
+	}
+
+	return rule, nil
+}
+
+func buildModel(name string, rule adapters.Rule) (model.Model, error) {
+	kind, value := rule.Model()
+
+	switch kind {
+	case "file":
+		m, err := model.NewModelFromFile(path.Config(value))
+		if err != nil {
+			return nil, fmt.Errorf("casbin: load model file of %q: %w", name, err)
+		}
+
+		return m, nil
+	case "text":
+		m, err := model.NewModelFromString(value)
+		if err != nil {
+			return nil, fmt.Errorf("casbin: parse model text of %q: %w", name, err)
+		}
+
+		return m, nil
+	default:
+		return nil, fmt.Errorf("casbin: model %q has an unsupported Model() type %q (want file or text)", name, kind)
+	}
 }

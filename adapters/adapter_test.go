@@ -25,8 +25,11 @@ type stubRule struct {
 	cacheStore   string
 	cacheKey     string
 	cacheTTL     time.Duration
+	table        string
 	refreshed    int
 }
+
+func (r *stubRule) TableName() string { return r.table }
 
 func (r *stubRule) SetPtype(value string) { r.ptype = value }
 func (r *stubRule) GetPtype() string      { return r.ptype }
@@ -251,11 +254,19 @@ func TestAdapterCacheTTLOverride(t *testing.T) {
 	assert.Equal(t, time.Minute, cache.ttl)
 }
 
-func TestAdapterCacheRequiresKey(t *testing.T) {
-	adapter := newTestAdapter(&stubRule{cacheEnabled: true, cacheStore: "memory"}, &fakeStore{}, newFakeCache())
+func TestAdapterAutoCacheKey(t *testing.T) {
+	store := &fakeStore{rows: []PolicyRow{}}
+	cache := newFakeCache()
+	rule := &stubRule{cacheEnabled: true, cacheStore: "memory", table: "casbin_rules"}
+	adapter := newTestAdapter(rule, store, cache)
 
-	err := adapter.LoadPolicy(testModel(t))
-	assert.ErrorIs(t, err, ErrEmptyCacheKey)
+	require.NoError(t, adapter.LoadPolicy(testModel(t)))
+
+	_, cached := cache.values["goravel-authz:casbin_rules"]
+	assert.True(t, cached, "the cache key must be derived from the table name")
+
+	require.NoError(t, adapter.RefreshCache())
+	assert.Equal(t, []string{"goravel-authz:casbin_rules"}, cache.forgotten)
 }
 
 func TestAdapterInsertClearsStaleValues(t *testing.T) {
