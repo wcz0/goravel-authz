@@ -6,7 +6,9 @@
 
 ### Added
 
-- 接入 Goravel 日志：授权决策、enforcer 生命周期和 Casbin 内部诊断。
+- 接入 Goravel 日志：授权决策、enforcer 生命周期和 Casbin 内部诊断统一写入 Goravel 日志通道。
+- 新增 `casbin.log` 配置：`enabled`、`channel`、`allowed`、`denied`、`casbin`。拒绝请求默认以 warning 记录，放行请求需显式开启。
+- `package:install` 生成的配置模板包含日志配置，README 增加日志章节。
 
 ## [0.4.0] - 2026-10-23
 

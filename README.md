@@ -2,7 +2,7 @@
 
 Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin](https://casbin.org): ACL, RBAC and ABAC models backed by your own database table, with multiple independent enforcers, policy caching through the Goravel cache and route middleware.
 
-[中文文档](./README_zh.md)
+[中文文档](./README_zh.md) · [Changelog](./CHANGELOG.md)
 
 ## Requirements
 

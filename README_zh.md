@@ -2,7 +2,7 @@
 
 基于 [Casbin](https://casbin.org) 的 [Goravel](https://github.com/goravel/goravel) 授权扩展库：支持 ACL、RBAC、ABAC 模型，策略存放在你自己的数据库表中，可以同时运行多套互相独立的 Enforcer，通过 Goravel 缓存加速策略加载，并提供路由中间件。
 
-[English](./README.md)
+[English](./README.md) · [更新日志](./CHANGELOG.md)
 
 ## 环境要求
 
