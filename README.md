@@ -15,26 +15,14 @@ Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin
 go get github.com/wcz0/goravel-authz
 ```
 
-Register the service provider in `bootstrap/providers.go`:
-
-```go
-import "github.com/wcz0/goravel-authz"
-
-// ...
-"providers": []foundation.ServiceProvider{
-    // ...
-    &authz.ServiceProvider{},
-},
-```
-
-Publish the configuration and the migration, then migrate:
+Install the package resources and migrate:
 
 ```shell
-go run . artisan vendor:publish --package=github.com/wcz0/goravel-authz
+go run . artisan package:install github.com/wcz0/goravel-authz
 go run . artisan migrate
 ```
 
-`vendor:publish` creates `config/casbin.go`, `config/casbin-rbac-model.conf` and the `casbin_rules` migration.
+`package:install` registers `&authz.ServiceProvider{}` in `bootstrap/providers.go`, writes `config/casbin.go` and `config/casbin-rbac-model.conf`, and creates and registers the `casbin_rules` migration. Installer support requires v0.3.0 or later.
 
 ## Configuration
 

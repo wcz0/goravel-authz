@@ -15,26 +15,14 @@
 go get github.com/wcz0/goravel-authz
 ```
 
-在 `bootstrap/providers.go` 中注册服务提供者：
-
-```go
-import "github.com/wcz0/goravel-authz"
-
-// ...
-"providers": []foundation.ServiceProvider{
-    // ...
-    &authz.ServiceProvider{},
-},
-```
-
-发布配置文件与迁移文件，然后执行迁移：
+安装资源并执行数据库迁移：
 
 ```shell
-go run . artisan vendor:publish --package=github.com/wcz0/goravel-authz
+go run . artisan package:install github.com/wcz0/goravel-authz
 go run . artisan migrate
 ```
 
-`vendor:publish` 会生成 `config/casbin.go`、`config/casbin-rbac-model.conf` 和 `casbin_rules` 表的迁移文件。
+`package:install` 会把 `&authz.ServiceProvider{}` 注册到 `bootstrap/providers.go`，生成 `config/casbin.go`、`config/casbin-rbac-model.conf`，并创建、注册 `casbin_rules` 表的迁移文件。安装器需要 v0.3.0 或更高版本。
 
 ## 配置
 
