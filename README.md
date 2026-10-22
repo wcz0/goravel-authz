@@ -169,6 +169,30 @@ middleware.Authz(
 
 A request is allowed when `Enforce(subject, object, action)` returns true. A missing subject, a resolver error or a policy miss returns `403` with a JSON message; an enforcer error returns `500`. After another process changes the policies, call `authz.Reload` to refresh the local enforcer.
 
+## Managing policies
+
+The service provider registers Artisan commands for every model:
+
+```shell
+go run . artisan authz:policy:list
+go run . artisan authz:policy:add admin /admin/users GET
+go run . artisan authz:policy:remove admin /admin/users GET
+go run . artisan authz:group:add alice admin
+go run . artisan authz:group:remove alice admin
+go run . artisan authz:enforce alice /admin/users GET
+```
+
+Every command accepts `--guard` (or `-g`) to target another model:
+
+```shell
+go run . artisan authz:policy:add admin /api/users GET --guard=admin
+go run . artisan authz:enforce admin /api/users GET --guard=admin
+```
+
+Values are passed straight to Casbin, so models with more tokens (domains, for example) work as well. The commands validate the value count against the model, because Casbin accepts shorter rules silently.
+
+Writes go to the database and refresh the policy cache. Other processes keep their in-memory policies; call `authz.Reload` or restart them to pick up the change.
+
 ## Testing
 
 ```shell
@@ -179,5 +203,4 @@ The adapter tests run against a real SQLite database through the Goravel ORM, in
 
 ## Roadmap
 
-- Artisan commands to manage policies
 - Goravel logger integration

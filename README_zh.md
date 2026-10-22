@@ -168,6 +168,30 @@ middleware.Authz(
 
 当 `Enforce(subject, object, action)` 返回 true 时放行。subject 缺失、解析器报错或策略未命中时返回 `403` 和 JSON 消息；Enforcer 出错时返回 `500`。其他进程修改策略后，调用 `authz.Reload` 让当前进程的 Enforcer 重新加载。
 
+## 命令行管理策略
+
+服务提供者会为每个模型注册 Artisan 命令：
+
+```shell
+go run . artisan authz:policy:list
+go run . artisan authz:policy:add admin /admin/users GET
+go run . artisan authz:policy:remove admin /admin/users GET
+go run . artisan authz:group:add alice admin
+go run . artisan authz:group:remove alice admin
+go run . artisan authz:enforce alice /admin/users GET
+```
+
+所有命令都支持 `--guard`（或 `-g`）切换到其他模型：
+
+```shell
+go run . artisan authz:policy:add admin /api/users GET --guard=admin
+go run . artisan authz:enforce admin /api/users GET --guard=admin
+```
+
+参数会原样传给 Casbin，因此带 domain 等更多 token 的模型同样适用。由于 Casbin 会静默接受缺少字段的规则，命令会先按模型校验参数数量。
+
+写入会立即落库并刷新策略缓存。其他进程仍持有内存中的策略，需要调用 `authz.Reload` 或重启后才能看到变更。
+
 ## 测试
 
 ```shell
@@ -178,5 +202,4 @@ go test ./...
 
 ## 路线图
 
-- Artisan 命令管理策略
 - 接入 Goravel 日志
