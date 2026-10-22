@@ -26,14 +26,17 @@ func (r *Rule) TableName() string {
 }
 
 func (r *Rule) Connection() string {
-	return "mysql"
+	// An empty connection uses the application's default database.
+	return ""
 }
 
 /**
  * Cache
  */
 func (r *Rule) Cache() (bool, string, string) {
-	return true, "memory", "casbin-key"
+	// The key contains the table name so several enforcers never share the
+	// same cached policy set.
+	return true, "memory", "goravel-authz:" + r.TableName()
 	// return false, "", ""
 }
 

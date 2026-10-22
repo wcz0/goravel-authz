@@ -19,22 +19,32 @@ func NewEnforcer(g string) *casbin.Enforcer {
 		g = config.GetString("casbin.default")
 	}
 	ruleImpl := config.Get("casbin.models." + g)
-	var rule adapters.Rule = ruleImpl.(adapters.Rule)
+	var rule adapters.Rule
+	if ruleImpl == nil {
+		panic("casbin: model " + g + " is not defined in the casbin.models configuration")
+	}
+	rule, ok := ruleImpl.(adapters.Rule)
+	if !ok {
+		panic("casbin: model " + g + " must implement adapters.Rule")
+	}
 	configType, contextArg := rule.Model()
 	var m model.Model
-	if configType == "file" {
-		path := path.Config(contextArg)
-		modelInstance, err := model.NewModelFromFile(path)
+	switch configType {
+	case "file":
+		modelPath := path.Config(contextArg)
+		modelInstance, err := model.NewModelFromFile(modelPath)
 		if err != nil {
 			panic("加载 model 文件失败: " + err.Error())
 		}
 		m = modelInstance
-	} else if configType == "text" {
+	case "text":
 		modelInstance, err := model.NewModelFromString(contextArg)
 		if err != nil {
 			panic("加载 model 文本失败: " + err.Error())
 		}
 		m = modelInstance
+	default:
+		panic("casbin: model " + g + " has an unsupported Model() type: " + configType)
 	}
 	a := adapters.NewAdapter(rule)
 	e, err := casbin.NewEnforcer(m, a)

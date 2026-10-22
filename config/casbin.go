@@ -14,8 +14,6 @@ func init() {
 		// 多个模型实现多个适配器
 		"models": map[string]any{
 			"basic": models.NewRule(),
-			// second adapter
-			"second": "",
 		},
 	})
 }

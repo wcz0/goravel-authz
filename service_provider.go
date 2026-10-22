@@ -31,5 +31,3 @@ func (receiver *ServiceProvider) Boot(app foundation.Application) {
 		"database": app.DatabasePath("migrations"),
 	})
 }
-
-

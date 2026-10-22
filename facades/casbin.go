@@ -7,7 +7,7 @@ import (
 	authz "github.com/wcz0/goravel-authz"
 )
 
-func Enforcer(guard ...string) *casbin.Enforcer  {
+func Enforcer(guard ...string) *casbin.Enforcer {
 	g := ""
 	if len(guard) > 0 {
 		g = guard[0]
