@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/casbin/casbin/v2"
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -15,15 +16,15 @@ import (
 
 const (
 	// SubjectKey is the context key written by SetSubject and read by the
-	// default subject resolver.
-	SubjectKey = "goravel-authz:subject"
+	// default subject resolver. It is an alias of authz.SubjectKey.
+	SubjectKey = authz.SubjectKey
 
 	// DefaultDeniedMessage is returned by the default denied handler.
-	DefaultDeniedMessage = "This action is unauthorized."
+	DefaultDeniedMessage = authz.DefaultDeniedMessage
 
 	// DefaultUnavailableMessage is returned when the enforcer cannot be
 	// created or evaluated.
-	DefaultUnavailableMessage = "Authorization service is unavailable."
+	DefaultUnavailableMessage = authz.DefaultUnavailableMessage
 )
 
 // SubjectResolver returns the subject of the request. An empty subject or an
@@ -39,7 +40,10 @@ type ActionResolver func(ctx contractshttp.Context) string
 // Decision is the request that was checked against the policies.
 type Decision struct {
 	// Guard is the configured model name. An empty Guard means casbin.default.
-	Guard   string
+	Guard string
+	// Guards holds every model of a request that was checked against several
+	// models (WithGuards). It is empty for a single-guard request.
+	Guards  []string
 	Subject string
 	Object  string
 	Action  string
@@ -52,7 +56,10 @@ type DeniedHandler func(ctx contractshttp.Context, decision Decision)
 type Option func(*authzMiddleware)
 
 type authzMiddleware struct {
-	guard   string
+	guard  string
+	guards []string
+	tokens []string
+
 	subject SubjectResolver
 	object  ObjectResolver
 	action  ActionResolver
@@ -69,14 +76,15 @@ type authzMiddleware struct {
 // Authz returns middleware that only lets a request through when the policies
 // of a Casbin model allow its subject, object and action.
 //
-// By default the enforcer of casbin.default is used, the subject is read from
-// SetSubject, the object is the route pattern (OriginPath) and the action is
-// the HTTP method. Every part can be replaced with an option.
+// By default the enforcer of casbin.default is used, the subject is the value
+// stored by SetSubject or, when that is empty, the ID of the authenticated
+// Goravel Auth user. The object is the route pattern (OriginPath) and the
+// action is the HTTP method. Every part can be replaced with an option.
 func Authz(options ...Option) contractshttp.Middleware {
 	settings := logging.Load()
 
 	m := &authzMiddleware{
-		subject:    subjectFromContext,
+		subject:    subjectFromRequest,
 		object:     objectFromRequest,
 		action:     actionFromRequest,
 		denied:     denyWithJSON,
@@ -93,16 +101,37 @@ func Authz(options ...Option) contractshttp.Middleware {
 	return m
 }
 
+// Ability returns middleware that checks fixed Casbin request values instead
+// of the request path and method:
+//
+//	router.Get("/articles", handler).Middleware(middleware.Ability("articles", "read"))
+//
+// evaluates Enforce(subject, "articles", "read"). The subject is resolved like
+// Authz does.
+func Ability(tokens ...string) contractshttp.Middleware {
+	return Authz(WithTokens(tokens...))
+}
+
 func (m *authzMiddleware) Signature() string {
-	if m.guard == "" {
-		return "goravel:authz"
+	signature := "goravel:authz"
+	switch {
+	case m.guard != "":
+		signature += ":" + m.guard
+	case len(m.guards) > 0:
+		signature += ":any:" + strings.Join(m.guards, ",")
+	}
+	if len(m.tokens) > 0 {
+		signature += ":tokens:" + strings.Join(m.tokens, ",")
 	}
 
-	return "goravel:authz:" + m.guard
+	return signature
 }
 
 func (m *authzMiddleware) Handle(ctx contractshttp.Context) {
-	decision := Decision{Guard: m.guard}
+	decision := Decision{
+		Guard:  m.guard,
+		Guards: append([]string(nil), m.guards...),
+	}
 
 	subject, err := m.subject(ctx)
 	if err != nil {
@@ -116,32 +145,73 @@ func (m *authzMiddleware) Handle(ctx contractshttp.Context) {
 		return
 	}
 	decision.Subject = subject
-	decision.Object = m.object(ctx)
-	decision.Action = m.action(ctx)
+	if len(m.tokens) > 0 {
+		// Fixed request values: Enforce(subject, tokens...). The object and
+		// action are not read from the request in this mode.
+		decision.Object = m.tokens[0]
+		if len(m.tokens) > 1 {
+			decision.Action = m.tokens[1]
+		}
+	} else {
+		decision.Object = m.object(ctx)
+		decision.Action = m.action(ctx)
+	}
 
-	enforcer, err := m.open(m.guard)
-	if err != nil {
-		m.logFailure("authz: enforcer unavailable", decision, err)
+	var failure error
+	failureMessage := ""
+	for _, guard := range m.guardsToCheck() {
+		enforcer, err := m.open(guard)
+		if err != nil {
+			failure, failureMessage = err, "authz: enforcer unavailable"
+			continue
+		}
+
+		allowed, err := enforcer.Enforce(m.enforceArgs(subject, decision)...)
+		if err != nil {
+			failure, failureMessage = err, "authz: enforce failed"
+			continue
+		}
+		if !allowed {
+			continue
+		}
+
+		m.logAllowedRequest(decision)
+		ctx.Request().Next()
+		return
+	}
+
+	if failure != nil {
+		// Failing closed is safer than accepting a request that one of the
+		// configured models could not evaluate.
+		m.logFailure(failureMessage, decision, failure)
 		abortWithError(ctx, http.StatusInternalServerError, DefaultUnavailableMessage)
 		return
 	}
 
-	allowed, err := enforcer.Enforce(subject, decision.Object, decision.Action)
-	if err != nil {
-		m.logFailure("authz: enforce failed", decision, err)
-		abortWithError(ctx, http.StatusInternalServerError, DefaultUnavailableMessage)
-		return
+	m.logDeniedRequest(decision, "policy")
+	m.denied(ctx, decision)
+}
+
+func (m *authzMiddleware) guardsToCheck() []string {
+	if len(m.guards) > 0 {
+		return m.guards
 	}
 
-	if !allowed {
-		m.logDeniedRequest(decision, "policy")
-		m.denied(ctx, decision)
-		return
+	return []string{m.guard}
+}
+
+func (m *authzMiddleware) enforceArgs(subject string, decision Decision) []any {
+	if len(m.tokens) > 0 {
+		args := make([]any, 0, len(m.tokens)+1)
+		args = append(args, subject)
+		for _, token := range m.tokens {
+			args = append(args, token)
+		}
+
+		return args
 	}
 
-	m.logAllowedRequest(decision)
-
-	ctx.Request().Next()
+	return []any{subject, decision.Object, decision.Action}
 }
 
 func (m *authzMiddleware) logAllowedRequest(decision Decision) {
@@ -181,20 +251,46 @@ func decisionFields(decision Decision) map[string]any {
 	if decision.Guard != "" {
 		fields["guard"] = decision.Guard
 	}
+	if len(decision.Guards) > 0 {
+		fields["guards"] = decision.Guards
+	}
 
 	return fields
 }
 
 // WithGuard selects the Casbin model to check against. An empty guard uses
-// casbin.default.
+// casbin.default. It replaces a previously configured WithGuards list.
 func WithGuard(guard string) Option {
 	return func(m *authzMiddleware) {
 		m.guard = guard
+		m.guards = nil
+	}
+}
+
+// WithGuards allows the request when any of the given models allows it. An
+// empty name in the list means casbin.default. It replaces a previously
+// configured WithGuard.
+func WithGuards(guards ...string) Option {
+	return func(m *authzMiddleware) {
+		m.guard = ""
+		m.guards = append([]string(nil), guards...)
+	}
+}
+
+// WithTokens replaces the object and action with fixed Casbin request values.
+// The request becomes Enforce(subject, tokens...), which is useful for models
+// with custom request tokens or for ability checks that do not depend on the
+// HTTP path and method:
+//
+//	middleware.Ability("articles", "read") // Enforce(subject, "articles", "read")
+func WithTokens(tokens ...string) Option {
+	return func(m *authzMiddleware) {
+		m.tokens = append([]string(nil), tokens...)
 	}
 }
 
 // WithSubject replaces the default subject resolver, which reads the value
-// stored by SetSubject.
+// stored by SetSubject and falls back to the authenticated Goravel Auth user.
 func WithSubject(resolver SubjectResolver) Option {
 	return func(m *authzMiddleware) {
 		if resolver != nil {
@@ -240,13 +336,20 @@ func SetSubject(ctx contractshttp.Context, subject string) {
 
 // SubjectFrom returns the subject stored by SetSubject, or an empty string.
 func SubjectFrom(ctx contractshttp.Context) string {
-	subject, _ := ctx.Value(SubjectKey).(string)
-
-	return subject
+	return authz.SubjectFromContext(ctx)
 }
 
-func subjectFromContext(ctx contractshttp.Context) (string, error) {
-	return SubjectFrom(ctx), nil
+// subjectFromAuth is replaced in tests.
+var subjectFromAuth = authz.SubjectFromAuth
+
+// subjectFromRequest prefers the subject stored by SetSubject and falls back
+// to the ID of the authenticated Goravel Auth user.
+func subjectFromRequest(ctx contractshttp.Context) (string, error) {
+	if subject := SubjectFrom(ctx); subject != "" {
+		return subject, nil
+	}
+
+	return subjectFromAuth(ctx)
 }
 
 func objectFromRequest(ctx contractshttp.Context) string {

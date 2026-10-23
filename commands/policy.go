@@ -155,8 +155,18 @@ func (receiver *PolicyListCommand) Handle(ctx console.Context) error {
 			}
 		}
 	}
-	appendRows("p", enforcer.GetPolicy())
-	appendRows("g", enforcer.GetGroupingPolicy())
+	policies, err := enforcer.GetPolicy()
+	if err != nil {
+		return err
+	}
+
+	groupingPolicies, err := enforcer.GetGroupingPolicy()
+	if err != nil {
+		return err
+	}
+
+	appendRows("p", policies)
+	appendRows("g", groupingPolicies)
 
 	if columns == 0 {
 		ctx.Info("No policies found.")

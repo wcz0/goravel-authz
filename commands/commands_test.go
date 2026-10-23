@@ -97,7 +97,7 @@ func TestPolicyAddCommand(t *testing.T) {
 		ctx.EXPECT().Success("Policy added: admin /admin/users GET").Once()
 
 		require.NoError(t, command.Handle(ctx))
-		assert.Equal(t, [][]string{{"admin", "/admin/users", "GET"}}, enforcer.GetPolicy())
+		assert.Equal(t, [][]string{{"admin", "/admin/users", "GET"}}, listPolicies(t, enforcer))
 	})
 
 	t.Run("reports an existing policy", func(t *testing.T) {
@@ -135,7 +135,7 @@ func TestPolicyAddCommand(t *testing.T) {
 		err := command.Handle(ctx)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "p rule expects 3 values")
-		assert.Empty(t, enforcer.GetPolicy())
+		assert.Empty(t, listPolicies(t, enforcer))
 	})
 
 	t.Run("wraps adapter errors", func(t *testing.T) {
@@ -211,7 +211,7 @@ func TestPolicyRemoveCommand(t *testing.T) {
 		ctx.EXPECT().Success("Policy removed: admin /admin/users GET").Once()
 
 		require.NoError(t, command.Handle(ctx))
-		assert.Empty(t, enforcer.GetPolicy())
+		assert.Empty(t, listPolicies(t, enforcer))
 	})
 
 	t.Run("reports a missing policy", func(t *testing.T) {
@@ -327,7 +327,7 @@ func TestGroupCommands(t *testing.T) {
 		ctx.EXPECT().Success("Grouping added: alice admin").Once()
 
 		require.NoError(t, command.Handle(ctx))
-		assert.Equal(t, [][]string{{"alice", "admin"}}, enforcer.GetGroupingPolicy())
+		assert.Equal(t, [][]string{{"alice", "admin"}}, listGroupingPolicies(t, enforcer))
 	})
 
 	t.Run("reports an existing grouping", func(t *testing.T) {
@@ -383,7 +383,7 @@ func TestGroupCommands(t *testing.T) {
 		ctx.EXPECT().Success("Grouping removed: alice admin").Once()
 
 		require.NoError(t, command.Handle(ctx))
-		assert.Empty(t, enforcer.GetGroupingPolicy())
+		assert.Empty(t, listGroupingPolicies(t, enforcer))
 	})
 
 	t.Run("reports a missing grouping", func(t *testing.T) {
@@ -464,4 +464,22 @@ func TestEnforceCommand(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "enforcer is unavailable")
 	})
+}
+
+func listPolicies(t *testing.T, enforcer *casbin.SyncedEnforcer) [][]string {
+	t.Helper()
+
+	policies, err := enforcer.GetPolicy()
+	require.NoError(t, err)
+
+	return policies
+}
+
+func listGroupingPolicies(t *testing.T, enforcer *casbin.SyncedEnforcer) [][]string {
+	t.Helper()
+
+	policies, err := enforcer.GetGroupingPolicy()
+	require.NoError(t, err)
+
+	return policies
 }

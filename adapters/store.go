@@ -64,6 +64,17 @@ type Store interface {
 	DeleteAll() error
 }
 
+// TransactionalStore is an optional Store capability. When implemented, every
+// update that touches more than one row (SavePolicy, AddPolicies, UpdatePolicy
+// and friends) runs inside a single transaction and is rolled back when any
+// statement fails.
+type TransactionalStore interface {
+	Store
+	// Transaction runs fn against a store whose writes are part of one
+	// transaction. Returning an error rolls the transaction back.
+	Transaction(fn func(Store) error) error
+}
+
 type policyRecord struct {
 	Ptype string `gorm:"column:ptype"`
 	V0    string `gorm:"column:v0"`
@@ -80,21 +91,59 @@ func (r policyRecord) row() PolicyRow {
 }
 
 type ormStore struct {
-	rule Rule
-	mu   sync.Mutex
-	open func() contractsorm.Orm
+	rule    Rule
+	mu      *sync.Mutex
+	open    func() contractsorm.Orm
+	queryFn func() contractsorm.Query
 }
 
 // NewORMStore returns the default Store backed by the Goravel ORM.
 func NewORMStore(rule Rule) Store {
+	return newORMStore(rule, func() contractsorm.Orm { return facades.Orm() })
+}
+
+func newORMStore(rule Rule, open func() contractsorm.Orm) *ormStore {
 	return &ormStore{
 		rule: rule,
-		open: func() contractsorm.Orm { return facades.Orm() },
+		mu:   &sync.Mutex{},
+		open: open,
 	}
 }
 
+// orm returns the ORM instance of the connection declared by the rule.
+func (s *ormStore) orm() contractsorm.Orm {
+	orm := s.open()
+	if connector, ok := s.rule.(interface{ Connection() string }); ok && orm != nil {
+		return orm.Connection(connector.Connection())
+	}
+
+	return orm
+}
+
 func (s *ormStore) query() contractsorm.Query {
-	return s.open().Query()
+	if s.queryFn != nil {
+		return s.queryFn()
+	}
+
+	return s.orm().Query()
+}
+
+// Transaction runs fn inside a database transaction, routing every statement
+// through the connection of the rule. Nested calls reuse the current
+// transaction.
+func (s *ormStore) Transaction(fn func(Store) error) error {
+	if s.queryFn != nil {
+		return fn(s)
+	}
+
+	return s.orm().Transaction(func(tx contractsorm.Query) error {
+		return fn(&ormStore{
+			rule:    s.rule,
+			mu:      s.mu,
+			open:    s.open,
+			queryFn: func() contractsorm.Query { return tx },
+		})
+	})
 }
 
 func (s *ormStore) Load() ([]PolicyRow, error) {
@@ -112,8 +161,10 @@ func (s *ormStore) Load() ([]PolicyRow, error) {
 }
 
 func (s *ormStore) Insert(row PolicyRow) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.mu != nil {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+	}
 
 	s.applyRow(row)
 

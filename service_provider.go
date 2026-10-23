@@ -3,6 +3,7 @@ package authz
 import (
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/foundation"
+	"github.com/goravel/framework/facades"
 
 	"github.com/wcz0/goravel-authz/commands"
 )
@@ -34,4 +35,8 @@ func (receiver *ServiceProvider) Boot(app foundation.Application) {
 		commands.NewGroupRemoveCommand(NewEnforcer),
 		commands.NewEnforceCommand(NewEnforcer),
 	})
+
+	if config := facades.Config(); config != nil && config.GetBool("casbin.gate.enabled", true) {
+		RegisterGate(facades.Gate())
+	}
 }

@@ -7,12 +7,19 @@ Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin
 ## Requirements
 
 - Go 1.25+
-- Goravel 1.18+
+- Goravel 1.18.x for the v1.18.x line, Goravel 1.17.x for the v1.17.x line
+
+Release lines follow the Goravel minor version. Pick the line that matches your framework:
+
+| goravel-authz | Goravel |
+| --- | --- |
+| v1.18.x | v1.18.x |
+| v1.17.x | v1.17.x |
 
 ## Installation
 
 ```shell
-go get github.com/wcz0/goravel-authz
+go get github.com/wcz0/goravel-authz@v1.18.0
 ```
 
 Install the package resources and migrate:
@@ -22,7 +29,7 @@ go run . artisan package:install github.com/wcz0/goravel-authz
 go run . artisan migrate
 ```
 
-`package:install` registers `&authz.ServiceProvider{}` in `bootstrap/providers.go`, writes `config/casbin.go` and `config/casbin-rbac-model.conf`, and creates and registers the `casbin_rules` migration. Installer support requires v0.3.0 or later.
+`package:install` registers `&authz.ServiceProvider{}` in `bootstrap/providers.go`, writes `config/casbin.go` and `config/casbin-rbac-model.conf`, and creates and registers the `casbin_rules` migration.
 
 ## Configuration
 
@@ -41,6 +48,9 @@ func init() {
             "allowed": false,
             "denied":  true,
             "casbin":  false,
+        },
+        "gate": map[string]any{
+            "enabled": true,
         },
     })
 }
@@ -100,7 +110,19 @@ config.Add("casbin", map[string]any{
 
 Caching uses the Goravel cache, so any configured store works. Set the store name in `Cache()` — for example `redis` — and keep the same store configured in `config/cache.go`. Policy rows are stored as JSON, which works with in-memory, file and Redis drivers.
 
-The cache is flushed after every policy write (`AddPolicy`, `RemovePolicy`, `RemoveFilteredPolicy`, `SavePolicy`) and by the model events. Policies are cached for 5 minutes by default, or for the duration returned by an optional `CacheTTL()` method.
+The cache is flushed after every policy write (`AddPolicy`, `AddPolicies`, `RemovePolicy`, `RemovePolicies`, `RemoveFilteredPolicy`, the update methods and `SavePolicy`) and by the model events. Policies are cached for 5 minutes by default, or for the duration returned by an optional `CacheTTL()` method.
+
+### Gate
+
+When the service provider boots, Gate abilities that contain a comma are routed to Casbin:
+
+```go
+allowed := facades.Gate().WithContext(ctx).Allows("articles,read", map[string]any{
+    "guard": "admin", // optional, defaults to casbin.default
+})
+```
+
+This is evaluated as `Enforce(subject, "articles", "read")`. The subject is the value stored by `middleware.SetSubject` or, when that is empty, the ID of the authenticated Goravel Auth user. Abilities without a comma are left to the normal Gate implementation. Set `casbin.gate.enabled` to `false` to disable the hook.
 
 ## Usage
 
@@ -117,6 +139,29 @@ allowed, err := e.Enforce("alice", "/admin-api/users", "GET")
 ```
 
 Enforcers are created on first use, cached per model name and safe for concurrent use (`casbin.SyncedEnforcer`).
+
+### Batch, update and filtered operations
+
+The adapter implements Casbin's batch, updatable and filtered interfaces, so the matching enforcer methods persist automatically:
+
+```go
+e.AddPolicies([][]string{{"editor", "/articles", "GET"}, {"editor", "/articles", "POST"}})
+e.RemovePolicies([][]string{{"editor", "/articles", "POST"}})
+
+e.UpdatePolicy([]string{"editor", "/articles", "GET"}, []string{"editor", "/articles", "read"})
+e.UpdatePolicies(oldRules, newRules)
+e.UpdateFilteredPolicies([][]string{{"editor", "/articles", "read"}}, 1, "/articles")
+```
+
+`LoadFilteredPolicy` loads a subset of the stored policies:
+
+```go
+import "github.com/wcz0/goravel-authz/adapters"
+
+err := e.LoadFilteredPolicy(adapters.Filter{P: []string{"alice"}})
+```
+
+`adapters.Filter` mirrors Casbin's file filter (`P`, `G`, `G1` to `G5`); `adapters.FilterFunc` accepts an arbitrary predicate. While a filtered policy is loaded, `SavePolicy` is rejected because saving would delete the rows that were not loaded. The default ORM store runs every multi-row write in a transaction, so a failed batch leaves the table untouched.
 
 When another process changes the policies, reload the current enforcer explicitly:
 
@@ -143,12 +188,12 @@ facades.Route().Middleware(middleware.Authz()).Group(func(router route.Router) {
 
 The defaults are:
 
-- **guard**: `casbin.default` — use `middleware.WithGuard("admin")` for another model;
-- **subject**: the value stored in the request context by `middleware.SetSubject`;
+- **guard**: `casbin.default` — use `middleware.WithGuard("admin")` for another model, or `middleware.WithGuards("basic", "admin")` to allow the request when any model allows it;
+- **subject**: the value stored in the request context by `middleware.SetSubject`, falling back to the ID of the authenticated Goravel Auth user;
 - **object**: the route pattern, `OriginPath()` (for example `/users/{id}`), falling back to `Path()`;
 - **action**: the HTTP method.
 
-An authentication middleware runs first and stores the subject:
+An authentication middleware stores the subject when it is not the Goravel Auth ID:
 
 ```go
 func Authenticate(ctx contractshttp.Context) {
@@ -175,6 +220,26 @@ middleware.Authz(
 ```
 
 A request is allowed when `Enforce(subject, object, action)` returns true. A missing subject, a resolver error or a policy miss returns `403` with a JSON message; an enforcer error returns `500`. After another process changes the policies, call `authz.Reload` to refresh the local enforcer.
+
+Use several models when a request may be authorized by any of them:
+
+```go
+middleware.Authz(middleware.WithGuards("basic", "admin"))
+```
+
+Every model is checked until one allows the request. If none allows and one enforcer failed, the middleware returns `500`; if every enforcer denied cleanly, it returns `403`. `middleware.WithGuard` and `middleware.WithGuards` replace each other, so the last option wins.
+
+### Abilities
+
+`middleware.Ability` checks fixed Casbin request values instead of the path and method:
+
+```go
+facades.Route().Get("/articles", ArticleController{}.Index).Middleware(
+    middleware.Ability("articles", "read"),
+)
+```
+
+This evaluates `Enforce(subject, "articles", "read")`. `middleware.WithTokens(...)` provides the same behavior inside `Authz`; the tokens replace the object and action, so models with extra request tokens can use it as well.
 
 ## Managing policies
 

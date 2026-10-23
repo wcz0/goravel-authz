@@ -7,12 +7,19 @@
 ## 环境要求
 
 - Go 1.25+
-- Goravel 1.18+
+- v1.18.x 对应 Goravel 1.18.x，v1.17.x 对应 Goravel 1.17.x
+
+发布版本号对齐 Goravel 次版本，请选择与框架匹配的版本线：
+
+| goravel-authz | Goravel |
+| --- | --- |
+| v1.18.x | v1.18.x |
+| v1.17.x | v1.17.x |
 
 ## 安装
 
 ```shell
-go get github.com/wcz0/goravel-authz
+go get github.com/wcz0/goravel-authz@v1.18.0
 ```
 
 安装资源并执行数据库迁移：
@@ -22,7 +29,7 @@ go run . artisan package:install github.com/wcz0/goravel-authz
 go run . artisan migrate
 ```
 
-`package:install` 会把 `&authz.ServiceProvider{}` 注册到 `bootstrap/providers.go`，生成 `config/casbin.go`、`config/casbin-rbac-model.conf`，并创建、注册 `casbin_rules` 表的迁移文件。安装器需要 v0.3.0 或更高版本。
+`package:install` 会把 `&authz.ServiceProvider{}` 注册到 `bootstrap/providers.go`，生成 `config/casbin.go`、`config/casbin-rbac-model.conf`，并创建、注册 `casbin_rules` 表的迁移文件。
 
 ## 配置
 
@@ -41,6 +48,9 @@ func init() {
             "allowed": false,
             "denied":  true,
             "casbin":  false,
+        },
+        "gate": map[string]any{
+            "enabled": true,
         },
     })
 }
@@ -99,7 +109,19 @@ config.Add("casbin", map[string]any{
 
 缓存完全使用 Goravel 的缓存，任意已配置的 store 都可以。在 `Cache()` 中填写 store 名称（例如 `redis`），并在 `config/cache.go` 中配置同名的 store 即可。策略记录以 JSON 形式存储，内存、文件、Redis 驱动都可以直接使用。
 
-每次写入策略（`AddPolicy`、`RemovePolicy`、`RemoveFilteredPolicy`、`SavePolicy`）以及模型事件触发时都会自动清除缓存。默认缓存 5 分钟，也可以通过可选的 `CacheTTL()` 方法自定义。
+每次写入策略（`AddPolicy`、`AddPolicies`、`RemovePolicy`、`RemovePolicies`、`RemoveFilteredPolicy`、各个更新方法和 `SavePolicy`）以及模型事件触发时都会自动清除缓存。默认缓存 5 分钟，也可以通过可选的 `CacheTTL()` 方法自定义。
+
+### Gate
+
+服务提供者启动后，包含逗号的 Gate 能力会交给 Casbin 判断：
+
+```go
+allowed := facades.Gate().WithContext(ctx).Allows("articles,read", map[string]any{
+    "guard": "admin", // 可选，留空使用 casbin.default
+})
+```
+
+等价于 `Enforce(subject, "articles", "read")`。subject 优先取 `middleware.SetSubject` 写入的值，没有时使用 Goravel Auth 当前用户 ID。不含逗号的能力仍然交给 Gate 原有逻辑处理。把 `casbin.gate.enabled` 设为 `false` 可以关闭该钩子。
 
 ## 使用
 
@@ -116,6 +138,29 @@ allowed, err := e.Enforce("alice", "/admin-api/users", "GET")
 ```
 
 Enforcer 在第一次使用时创建，按模型名称缓存，并且是并发安全的（`casbin.SyncedEnforcer`）。
+
+### 批量、更新与过滤操作
+
+Adapter 实现了 Casbin 的批量、更新和过滤接口，因此 Enforcer 上对应的方法会自动持久化：
+
+```go
+e.AddPolicies([][]string{{"editor", "/articles", "GET"}, {"editor", "/articles", "POST"}})
+e.RemovePolicies([][]string{{"editor", "/articles", "POST"}})
+
+e.UpdatePolicy([]string{"editor", "/articles", "GET"}, []string{"editor", "/articles", "read"})
+e.UpdatePolicies(oldRules, newRules)
+e.UpdateFilteredPolicies([][]string{{"editor", "/articles", "read"}}, 1, "/articles")
+```
+
+`LoadFilteredPolicy` 只加载一部分策略：
+
+```go
+import "github.com/wcz0/goravel-authz/adapters"
+
+err := e.LoadFilteredPolicy(adapters.Filter{P: []string{"alice"}})
+```
+
+`adapters.Filter` 与 Casbin 的文件过滤器一致（`P`、`G`、`G1` 到 `G5`）；`adapters.FilterFunc` 可以传入任意判断函数。加载了过滤后的策略时，`SavePolicy` 会被拒绝，因为保存会删除没有加载的行。默认的 ORM 存储会把所有多行写入放在同一个事务中，批量操作失败时数据表保持不变。
 
 当其他进程修改了策略，需要显式重载当前进程的 Enforcer：
 
@@ -142,12 +187,12 @@ facades.Route().Middleware(middleware.Authz()).Group(func(router route.Router) {
 
 默认行为：
 
-- **guard**：`casbin.default`，可用 `middleware.WithGuard("admin")` 切换到其他模型；
-- **subject**：由 `middleware.SetSubject` 写入请求上下文的值；
+- **guard**：`casbin.default`，可用 `middleware.WithGuard("admin")` 切换到其他模型，或用 `middleware.WithGuards("basic", "admin")` 在其中任意一个模型放行时通过；
+- **subject**：优先使用 `middleware.SetSubject` 写入请求上下文的值，没有时回退到 Goravel Auth 当前用户 ID；
 - **object**：路由模板 `OriginPath()`（例如 `/users/{id}`），为空时回退到 `Path()`；
 - **action**：HTTP 方法。
 
-认证中间件先运行，并写入 subject：
+subject 不是 Goravel Auth 用户 ID 时，用认证中间件写入：
 
 ```go
 func Authenticate(ctx contractshttp.Context) {
@@ -174,6 +219,26 @@ middleware.Authz(
 ```
 
 当 `Enforce(subject, object, action)` 返回 true 时放行。subject 缺失、解析器报错或策略未命中时返回 `403` 和 JSON 消息；Enforcer 出错时返回 `500`。其他进程修改策略后，调用 `authz.Reload` 让当前进程的 Enforcer 重新加载。
+
+请求可以由多套模型中的任意一套放行：
+
+```go
+middleware.Authz(middleware.WithGuards("basic", "admin"))
+```
+
+中间件依次检查，任意一个模型放行就通过。如果全部拒绝且其中有 Enforcer 执行失败，返回 `500`；全部正常拒绝时返回 `403`。`middleware.WithGuard` 与 `middleware.WithGuards` 会互相替换，以最后一个选项为准。
+
+### 能力检查
+
+`middleware.Ability` 使用固定的 Casbin 请求参数，而不是请求路径和 HTTP 方法：
+
+```go
+facades.Route().Get("/articles", ArticleController{}.Index).Middleware(
+    middleware.Ability("articles", "read"),
+)
+```
+
+等价于 `Enforce(subject, "articles", "read")`。在 `Authz` 中也可以使用 `middleware.WithTokens(...)`；这些 token 会替换 object 和 action，因此同样适用于请求参数更多的模型。
 
 ## 命令行管理策略
 

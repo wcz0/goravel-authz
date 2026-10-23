@@ -71,7 +71,7 @@ func newSQLiteStore(t *testing.T) (*ormStore, *models.Rule) {
 
 	rule := models.NewRule()
 
-	return &ormStore{rule: rule, open: func() contractsorm.Orm { return orm }}, rule
+	return newORMStore(rule, func() contractsorm.Orm { return orm }), rule
 }
 
 func TestSQLiteEnforceRoundTrip(t *testing.T) {
@@ -186,4 +186,162 @@ func TestSQLiteSavePolicyReplacesRows(t *testing.T) {
 	rows, err := store.Load()
 	require.NoError(t, err)
 	assert.Equal(t, []PolicyRow{{Ptype: "p", Values: []string{"admin", "data1", "read"}}}, rows)
+}
+
+func TestSQLiteBatchPoliciesThroughEnforcer(t *testing.T) {
+	store, rule := newSQLiteStore(t)
+	adapter := NewAdapter(rule).SetStore(store).SetCache(nil)
+
+	e, err := casbin.NewEnforcer(testModel(t), adapter)
+	require.NoError(t, err)
+
+	added, err := e.AddPolicies([][]string{
+		{"admin", "data1", "read"},
+		{"editor", "data2", "write"},
+	})
+	require.NoError(t, err)
+	assert.True(t, added)
+
+	rows, err := store.Load()
+	require.NoError(t, err)
+	assert.Len(t, rows, 2)
+
+	removed, err := e.RemovePolicies([][]string{{"admin", "data1", "read"}})
+	require.NoError(t, err)
+	assert.True(t, removed)
+
+	rows, err = store.Load()
+	require.NoError(t, err)
+	assert.Equal(t, []PolicyRow{
+		{Ptype: "p", Values: []string{"editor", "data2", "write"}},
+	}, rows)
+}
+
+func TestSQLiteUpdatePoliciesThroughEnforcer(t *testing.T) {
+	store, rule := newSQLiteStore(t)
+	adapter := NewAdapter(rule).SetStore(store).SetCache(nil)
+
+	e, err := casbin.NewEnforcer(testModel(t), adapter)
+	require.NoError(t, err)
+
+	_, err = e.AddPolicies([][]string{
+		{"alice", "data1", "read"},
+		{"bob", "data2", "write"},
+	})
+	require.NoError(t, err)
+
+	updated, err := e.UpdatePolicies([][]string{
+		{"alice", "data1", "read"},
+		{"bob", "data2", "write"},
+	}, [][]string{
+		{"bob", "data2", "write"},
+		{"alice", "data1", "read"},
+	})
+	require.NoError(t, err)
+	assert.True(t, updated)
+
+	rows, err := store.Load()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []PolicyRow{
+		{Ptype: "p", Values: []string{"alice", "data1", "read"}},
+		{Ptype: "p", Values: []string{"bob", "data2", "write"}},
+	}, rows)
+
+	updated, err = e.UpdatePolicy(
+		[]string{"alice", "data1", "read"},
+		[]string{"alice", "data1", "write"},
+	)
+	require.NoError(t, err)
+	assert.True(t, updated)
+
+	rows, err = store.Load()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []PolicyRow{
+		{Ptype: "p", Values: []string{"alice", "data1", "write"}},
+		{Ptype: "p", Values: []string{"bob", "data2", "write"}},
+	}, rows)
+}
+
+func TestSQLiteUpdateFilteredPoliciesThroughEnforcer(t *testing.T) {
+	store, rule := newSQLiteStore(t)
+	adapter := NewAdapter(rule).SetStore(store).SetCache(nil)
+
+	e, err := casbin.NewEnforcer(testModel(t), adapter)
+	require.NoError(t, err)
+
+	_, err = e.AddPolicies([][]string{
+		{"admin", "data1", "read"},
+		{"admin", "data2", "read"},
+		{"editor", "data1", "write"},
+	})
+	require.NoError(t, err)
+
+	updated, err := e.UpdateFilteredPolicies(
+		[][]string{{"admin", "data1", "write"}},
+		1,
+		"data1",
+	)
+	require.NoError(t, err)
+	assert.True(t, updated)
+
+	rows, err := store.Load()
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []PolicyRow{
+		{Ptype: "p", Values: []string{"admin", "data1", "write"}},
+		{Ptype: "p", Values: []string{"admin", "data2", "read"}},
+	}, rows, "both rules with data1 match the filter and are replaced")
+
+	allowed, err := e.Enforce("admin", "data1", "write")
+	require.NoError(t, err)
+	assert.True(t, allowed, "the enforcer model must contain the updated rule")
+}
+
+func TestSQLiteLoadFilteredPolicyThroughEnforcer(t *testing.T) {
+	store, rule := newSQLiteStore(t)
+	adapter := NewAdapter(rule).SetStore(store).SetCache(nil)
+
+	require.NoError(t, adapter.AddPolicy("p", "p", []string{"admin", "data1", "read"}))
+	require.NoError(t, adapter.AddPolicy("p", "p", []string{"editor", "data2", "write"}))
+	require.NoError(t, adapter.AddPolicy("g", "g", []string{"alice", "admin"}))
+
+	e, err := casbin.NewEnforcer(testModel(t), adapter)
+	require.NoError(t, err)
+
+	require.NoError(t, e.LoadFilteredPolicy(Filter{P: []string{"admin"}}))
+	assert.True(t, e.IsFiltered())
+
+	policies, err := e.GetPolicy()
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{{"admin", "data1", "read"}}, policies)
+
+	grouping, err := e.GetGroupingPolicy()
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{{"alice", "admin"}}, grouping,
+		"a filter without a G entry loads all grouping policies")
+
+	// Casbin refuses to save a filtered policy as well; both guards are in
+	// place because SavePolicy would delete the rows that were not loaded.
+	assert.Error(t, e.SavePolicy())
+
+	require.NoError(t, e.LoadPolicy())
+	assert.False(t, e.IsFiltered())
+}
+
+func TestSQLiteBatchRollsBackOnConstraintError(t *testing.T) {
+	store, rule := newSQLiteStore(t)
+	adapter := NewAdapter(rule).SetStore(store).SetCache(nil)
+
+	require.NoError(t, adapter.AddPolicy("p", "p", []string{"admin", "data1", "read"}))
+
+	err := adapter.AddPolicies("p", "p", [][]string{
+		{"editor", "data2", "read"},
+		{"admin", "data1", "read"},
+	})
+
+	require.Error(t, err)
+	rows, loadErr := store.Load()
+	require.NoError(t, loadErr)
+	assert.Equal(t, []PolicyRow{
+		{Ptype: "p", Values: []string{"admin", "data1", "read"}},
+	}, rows, "the first insert must be rolled back when the second one violates the unique index")
 }

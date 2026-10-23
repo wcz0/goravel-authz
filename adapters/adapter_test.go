@@ -3,6 +3,7 @@ package adapters
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"sort"
 	"testing"
 	"time"
@@ -376,4 +377,295 @@ func TestDecodeRows(t *testing.T) {
 
 	_, err = decodeRows(42)
 	assert.True(t, errors.Is(err, ErrUnexpectedCachedValue))
+}
+
+func TestAdapterLoadFilteredPolicy(t *testing.T) {
+	store := &fakeStore{rows: []PolicyRow{
+		{Ptype: "p", Values: []string{"alice", "data1", "read"}},
+		{Ptype: "p", Values: []string{"bob", "data1", "write"}},
+		{Ptype: "g", Values: []string{"alice", "admin"}},
+	}}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	m := testModel(t)
+	require.NoError(t, adapter.LoadFilteredPolicy(m, Filter{
+		P: []string{"alice", "", "read"},
+		G: []string{},
+	}))
+
+	assert.True(t, adapter.IsFiltered())
+	assert.Equal(t, [][]string{{"alice", "data1", "read"}}, m["p"]["p"].Policy)
+	assert.Equal(t, [][]string{{"alice", "admin"}}, m["g"]["g"].Policy)
+
+	// The enforcer checks IsFiltered before saving; the adapter protects
+	// direct callers as well.
+	assert.ErrorIs(t, adapter.SavePolicy(m), ErrFilteredPolicy)
+	assert.Zero(t, store.deleteAll)
+}
+
+func TestAdapterLoadFilteredPolicyFunc(t *testing.T) {
+	store := &fakeStore{rows: []PolicyRow{
+		{Ptype: "p", Values: []string{"alice", "data1", "read"}},
+		{Ptype: "p", Values: []string{"bob", "data2", "write"}},
+	}}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	m := testModel(t)
+	require.NoError(t, adapter.LoadFilteredPolicy(m, FilterFunc(func(row PolicyRow) bool {
+		return row.Values[0] == "bob"
+	})))
+
+	assert.True(t, adapter.IsFiltered())
+	assert.Equal(t, [][]string{{"bob", "data2", "write"}}, m["p"]["p"].Policy)
+}
+
+func TestAdapterLoadFilteredPolicyRejectsUnknownFilter(t *testing.T) {
+	adapter := newTestAdapter(&stubRule{}, &fakeStore{}, nil)
+
+	err := adapter.LoadFilteredPolicy(testModel(t), "alice")
+	assert.ErrorIs(t, err, ErrUnsupportedFilter)
+	assert.False(t, adapter.IsFiltered())
+}
+
+func TestAdapterLoadPolicyResetsFilteredState(t *testing.T) {
+	store := &fakeStore{rows: []PolicyRow{
+		{Ptype: "p", Values: []string{"alice", "data1", "read"}},
+	}}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	require.NoError(t, adapter.LoadFilteredPolicy(testModel(t), Filter{P: []string{"alice"}}))
+	assert.True(t, adapter.IsFiltered())
+
+	require.NoError(t, adapter.LoadPolicy(testModel(t)))
+	assert.False(t, adapter.IsFiltered())
+}
+
+func TestAdapterAddPolicies(t *testing.T) {
+	store := &fakeStore{}
+	cache := newFakeCache()
+	rule := &stubRule{cacheEnabled: true, cacheStore: "memory", cacheKey: "k"}
+	adapter := newTestAdapter(rule, store, cache)
+
+	require.NoError(t, adapter.AddPolicies("p", "p", [][]string{
+		{"alice", "data1", "read"},
+		{"bob", "data2", "write"},
+	}))
+
+	assert.Equal(t, []PolicyRow{
+		{Ptype: "p", Values: []string{"alice", "data1", "read"}},
+		{Ptype: "p", Values: []string{"bob", "data2", "write"}},
+	}, store.inserted)
+	assert.Equal(t, []string{"k"}, cache.forgotten)
+}
+
+func TestAdapterAddPoliciesValidatesBeforeWriting(t *testing.T) {
+	store := &fakeStore{}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	err := adapter.AddPolicies("p", "p", [][]string{
+		{"alice", "data1", "read"},
+		{"bob", "1", "2", "3", "4", "5", "6"},
+	})
+
+	assert.ErrorIs(t, err, errTooManyFields)
+	assert.Empty(t, store.inserted, "no row may be written when a later rule is invalid")
+}
+
+func TestAdapterRemovePolicies(t *testing.T) {
+	store := &fakeStore{}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	require.NoError(t, adapter.RemovePolicies("p", "p", [][]string{
+		{"alice", "data1", "read"},
+		{"bob", "data2", "write"},
+	}))
+
+	assert.Equal(t, []deleteCall{
+		{ptype: "p", values: []string{"alice", "data1", "read"}},
+		{ptype: "p", values: []string{"bob", "data2", "write"}},
+	}, store.exactCalls)
+}
+
+func TestAdapterUpdatePolicy(t *testing.T) {
+	store := &fakeStore{}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	require.NoError(t, adapter.UpdatePolicy("p", "p",
+		[]string{"alice", "data1", "read"},
+		[]string{"alice", "data1", "write"},
+	))
+
+	assert.Equal(t, []deleteCall{{
+		ptype:  "p",
+		values: []string{"alice", "data1", "read"},
+	}}, store.exactCalls)
+	assert.Equal(t, []PolicyRow{{
+		Ptype:  "p",
+		Values: []string{"alice", "data1", "write"},
+	}}, store.inserted)
+}
+
+func TestAdapterUpdatePolicies(t *testing.T) {
+	store := &fakeStore{}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	// Swapping two rules is only safe when every old row is deleted before
+	// the new rows are inserted.
+	require.NoError(t, adapter.UpdatePolicies("p", "p", [][]string{
+		{"alice", "data1", "read"},
+		{"bob", "data2", "write"},
+	}, [][]string{
+		{"bob", "data2", "write"},
+		{"alice", "data1", "read"},
+	}))
+
+	assert.Equal(t, []deleteCall{
+		{ptype: "p", values: []string{"alice", "data1", "read"}},
+		{ptype: "p", values: []string{"bob", "data2", "write"}},
+	}, store.exactCalls)
+	assert.Len(t, store.inserted, 2)
+}
+
+func TestAdapterUpdatePoliciesRequiresMatchingCounts(t *testing.T) {
+	store := &fakeStore{}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	err := adapter.UpdatePolicies("p", "p", [][]string{{"alice"}}, [][]string{{"bob"}, {"carol"}})
+
+	assert.ErrorIs(t, err, ErrRuleCountMismatch)
+	assert.Empty(t, store.exactCalls)
+	assert.Empty(t, store.inserted)
+}
+
+func TestAdapterUpdateFilteredPolicies(t *testing.T) {
+	store := &fakeStore{rows: []PolicyRow{
+		{Ptype: "p", Values: []string{"admin", "data1", "read"}},
+		{Ptype: "p", Values: []string{"admin", "data2", "read"}},
+		{Ptype: "p", Values: []string{"editor", "data1", "write"}},
+		{Ptype: "g", Values: []string{"alice", "admin"}},
+	}}
+	cache := newFakeCache()
+	rule := &stubRule{cacheEnabled: true, cacheStore: "memory", cacheKey: "k"}
+	adapter := newTestAdapter(rule, store, cache)
+
+	oldRules, err := adapter.UpdateFilteredPolicies("p", "p", [][]string{
+		{"admin", "data1", "write"},
+	}, 1, "data1")
+
+	require.NoError(t, err)
+	assert.Equal(t, [][]string{
+		{"admin", "data1", "read"},
+		{"editor", "data1", "write"},
+	}, oldRules, "every p row matching the filter is returned, without the ptype")
+	require.Len(t, store.filterCalls, 1)
+	assert.Equal(t, filteredCall{ptype: "p", fieldIndex: 1, values: []string{"data1"}}, store.filterCalls[0])
+	assert.Equal(t, []PolicyRow{{Ptype: "p", Values: []string{"admin", "data1", "write"}}}, store.inserted)
+	assert.Equal(t, []string{"k"}, cache.forgotten)
+}
+
+func TestMatchRowFilter(t *testing.T) {
+	row := PolicyRow{Ptype: "p", Values: []string{"alice", "data1", "read"}}
+
+	assert.True(t, matchRowFilter(row, 1, []string{"data1"}))
+	assert.True(t, matchRowFilter(row, 1, []string{"data1", ""}))
+	assert.False(t, matchRowFilter(row, 1, []string{"data2"}))
+	assert.False(t, matchRowFilter(row, 2, []string{"data1"}))
+	assert.False(t, matchRowFilter(row, 5, []string{"read"}))
+	assert.True(t, matchRowFilter(row, 0, nil), "an empty filter matches every row")
+	assert.False(t, matchRowFilter(row, -1, nil))
+}
+
+func TestFilterMatches(t *testing.T) {
+	row := PolicyRow{Ptype: "p", Values: []string{"alice", "data1", "read"}}
+
+	assert.True(t, matchFilterValues(row, &Filter{P: []string{"alice", "", "read"}}))
+	assert.True(t, matchFilterValues(row, &Filter{P: []string{"", "", ""}}))
+	assert.False(t, matchFilterValues(row, &Filter{P: []string{"bob"}}))
+	assert.False(t, matchFilterValues(row, &Filter{P: []string{"", "", "", "extra"}}),
+		"a filter longer than the row cannot match")
+	assert.True(t, matchFilterValues(row, &Filter{G: []string{"nobody"}}),
+		"policy types without a filter entry are loaded completely")
+}
+
+// memoryStore is a transactional in-memory Store. It rejects duplicate rows,
+// like the unique index of the default table, and only applies a transaction
+// when its callback succeeds.
+type memoryStore struct {
+	rows         []PolicyRow
+	transactions int
+}
+
+func (s *memoryStore) Load() ([]PolicyRow, error) {
+	return append([]PolicyRow(nil), s.rows...), nil
+}
+
+func (s *memoryStore) Insert(row PolicyRow) error {
+	for _, existing := range s.rows {
+		if existing.Ptype == row.Ptype && slices.Equal(existing.Values, row.Values) {
+			return errors.New("duplicate policy")
+		}
+	}
+
+	s.rows = append(s.rows, row)
+	return nil
+}
+
+func (s *memoryStore) DeleteExact(ptype string, values []string) error {
+	kept := s.rows[:0]
+	for _, row := range s.rows {
+		if row.Ptype == ptype && slices.Equal(row.Values, values) {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	s.rows = kept
+
+	return nil
+}
+
+func (s *memoryStore) DeleteFiltered(ptype string, fieldIndex int, values []string) error {
+	kept := s.rows[:0]
+	for _, row := range s.rows {
+		if row.Ptype == ptype && matchRowFilter(row, fieldIndex, values) {
+			continue
+		}
+		kept = append(kept, row)
+	}
+	s.rows = kept
+
+	return nil
+}
+
+func (s *memoryStore) DeleteAll() error {
+	s.rows = nil
+	return nil
+}
+
+func (s *memoryStore) Transaction(fn func(Store) error) error {
+	s.transactions++
+
+	child := &memoryStore{rows: append([]PolicyRow(nil), s.rows...)}
+	if err := fn(child); err != nil {
+		return err
+	}
+
+	s.rows = child.rows
+	return nil
+}
+
+func TestAdapterRollsBackFailedBatchOnTransactionalStore(t *testing.T) {
+	initial := PolicyRow{Ptype: "p", Values: []string{"admin", "data1", "read"}}
+	store := &memoryStore{rows: []PolicyRow{initial}}
+	adapter := newTestAdapter(&stubRule{}, store, nil)
+
+	// The second rule duplicates an existing row and fails on the unique
+	// constraint; the first insert must be rolled back with it.
+	err := adapter.AddPolicies("p", "p", [][]string{
+		{"editor", "data2", "read"},
+		{"admin", "data1", "read"},
+	})
+
+	require.Error(t, err)
+	assert.Equal(t, 1, store.transactions)
+	assert.Equal(t, []PolicyRow{initial}, store.rows)
 }

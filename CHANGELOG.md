@@ -2,6 +2,33 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 和[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## 版本对应关系
+
+从 v1.18.0 起，版本号对齐 Goravel 次版本，不同版本线独立发布：
+
+| goravel-authz | Goravel |
+| --- | --- |
+| v1.18.x | v1.18.x |
+| v1.17.x | v1.17.x |
+
+v0.x 为旧命名，历史记录保留在下方。
+
+## [1.18.0] - 2026-10-23
+
+### Added
+
+- Adapter 实现 Casbin 的 `BatchAdapter`、`UpdatableAdapter` 和 `FilteredAdapter` 接口：批量增删、单条/批量更新、按条件更新和过滤加载。
+- 新增 `adapters.Filter` 与 `adapters.FilterFunc`；过滤加载后的策略禁止 `SavePolicy`，避免误删未加载的数据。
+- 默认 ORM 存储支持事务，批量写入失败时自动回滚。
+- HTTP 中间件默认从 Goravel Auth 读取当前用户 ID，并新增 `WithGuards` 多模型任一放行、`WithTokens` 和 `Ability` 固定能力检查。
+- 接入 Goravel Gate：逗号能力（如 `articles,read`）直接交给 Casbin，`casbin.gate.enabled` 可关闭。
+
+### Changed
+
+- 中间件的 subject 解析顺序改为先取 `SetSubject`，再回退到 Goravel Auth。
+- 升级 Casbin 到 v2.135.0、testify 到 v1.12.1，并适配 `GetPolicy`/`GetGroupingPolicy` 新的 `([][]string, error)` 返回值。
+- 版本号从 v0.5.0 起改为对齐 Goravel 次版本：v1.18.x 支持 Goravel v1.18，v1.17.x 支持 Goravel v1.17。
+
 ## [0.5.0] - 2026-10-23
 
 ### Added

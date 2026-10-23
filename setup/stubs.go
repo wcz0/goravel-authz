@@ -36,6 +36,13 @@ func init() {
 			"denied":  true,
 			"casbin":  false,
 		},
+
+		// Comma separated Gate abilities are evaluated by Casbin:
+		// Gate.Allows("articles,read", map[string]any{"guard": "basic"}).
+		// Other Gate abilities are left untouched.
+		"gate": map[string]any{
+			"enabled": true,
+		},
 	})
 }
 `

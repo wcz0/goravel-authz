@@ -255,3 +255,196 @@ func TestAuthzIgnoresNilOptions(t *testing.T) {
 
 	mw.Handle(ctx)
 }
+
+func stubSubjectFromAuth(t *testing.T, subject string, err error) {
+	t.Helper()
+
+	previous := subjectFromAuth
+	subjectFromAuth = func(contractshttp.Context) (string, error) {
+		return subject, err
+	}
+	t.Cleanup(func() { subjectFromAuth = previous })
+}
+
+func TestAuthzFallsBackToGoravelAuth(t *testing.T) {
+	stubSubjectFromAuth(t, "alice", nil)
+
+	mw := Authz().(*authzMiddleware)
+	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
+		return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
+	}
+
+	ctx, request, _ := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return(nil)
+	request.EXPECT().OriginPath().Return("/admin/users")
+	request.EXPECT().Method().Return("GET")
+	request.EXPECT().Next()
+
+	mw.Handle(ctx)
+}
+
+func TestAuthzPrefersStoredSubjectOverGoravelAuth(t *testing.T) {
+	stubSubjectFromAuth(t, "auth-bob", nil)
+
+	mw := Authz().(*authzMiddleware)
+	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
+		return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
+	}
+
+	ctx, request, _ := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return("alice")
+	request.EXPECT().OriginPath().Return("/admin/users")
+	request.EXPECT().Method().Return("GET")
+	request.EXPECT().Next()
+
+	mw.Handle(ctx)
+}
+
+func TestAuthzAuthResolverErrorIsDenied(t *testing.T) {
+	stubSubjectFromAuth(t, "", errors.New("auth is misconfigured"))
+
+	mw := Authz().(*authzMiddleware)
+	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
+		t.Fatal("the enforcer must not be opened without a subject")
+		return nil, nil
+	}
+
+	ctx, _, response := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return(nil)
+	expectDenied(t, response, http.StatusForbidden, DefaultDeniedMessage)
+
+	mw.Handle(ctx)
+}
+
+func TestAuthzAllowsAnyOfMultipleGuards(t *testing.T) {
+	mw := Authz(WithGuards("basic", "admin")).(*authzMiddleware)
+
+	var opened []string
+	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
+		opened = append(opened, name)
+		if name == "admin" {
+			return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
+		}
+
+		return newTestEnforcer(t), nil
+	}
+
+	ctx, request, _ := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return("alice")
+	request.EXPECT().OriginPath().Return("/admin/users")
+	request.EXPECT().Method().Return("GET")
+	request.EXPECT().Next()
+
+	mw.Handle(ctx)
+
+	assert.Equal(t, []string{"basic", "admin"}, opened)
+}
+
+func TestAuthzDeniesWhenEveryGuardDenies(t *testing.T) {
+	var got Decision
+	mw := Authz(
+		WithGuards("basic", "admin"),
+		WithDenied(func(_ contractshttp.Context, decision Decision) { got = decision }),
+	).(*authzMiddleware)
+	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
+		return newTestEnforcer(t), nil
+	}
+
+	ctx, request, _ := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return("alice")
+	request.EXPECT().OriginPath().Return("/admin/users")
+	request.EXPECT().Method().Return("GET")
+
+	mw.Handle(ctx)
+
+	assert.Equal(t, Decision{
+		Guards:  []string{"basic", "admin"},
+		Subject: "alice",
+		Object:  "/admin/users",
+		Action:  "GET",
+	}, got)
+	request.AssertNotCalled(t, "Next")
+}
+
+func TestAuthzAllowsWhenOneGuardAllowsAndAnotherFails(t *testing.T) {
+	mw := Authz(WithGuards("broken", "admin")).(*authzMiddleware)
+	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
+		if name == "broken" {
+			return nil, errors.New("model is broken")
+		}
+
+		return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
+	}
+
+	ctx, request, _ := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return("alice")
+	request.EXPECT().OriginPath().Return("/admin/users")
+	request.EXPECT().Method().Return("GET")
+	request.EXPECT().Next()
+
+	mw.Handle(ctx)
+}
+
+func TestAuthzReturns500WhenNoGuardAllowsAndOneFails(t *testing.T) {
+	mw := Authz(WithGuards("broken", "admin")).(*authzMiddleware)
+	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
+		if name == "broken" {
+			return nil, errors.New("model is broken")
+		}
+
+		return newTestEnforcer(t), nil
+	}
+
+	ctx, request, response := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return("alice")
+	request.EXPECT().OriginPath().Return("/admin/users")
+	request.EXPECT().Method().Return("GET")
+	expectDenied(t, response, http.StatusInternalServerError, DefaultUnavailableMessage)
+
+	mw.Handle(ctx)
+	request.AssertNotCalled(t, "Next")
+}
+
+func TestAbilityUsesFixedTokens(t *testing.T) {
+	mw := Ability("articles", "read").(*authzMiddleware)
+	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
+		return newTestEnforcer(t, []string{"alice", "articles", "read"}), nil
+	}
+
+	ctx, request, _ := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return("alice")
+	request.EXPECT().Next()
+
+	mw.Handle(ctx)
+
+	request.AssertNotCalled(t, "OriginPath")
+	request.AssertNotCalled(t, "Method")
+}
+
+func TestAbilityDeniesWhenFixedTokensDoNotMatch(t *testing.T) {
+	mw := Ability("articles", "write").(*authzMiddleware)
+	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
+		return newTestEnforcer(t, []string{"alice", "articles", "read"}), nil
+	}
+
+	ctx, _, response := newMockContext(t)
+	ctx.EXPECT().Value(SubjectKey).Return("alice")
+	expectDenied(t, response, http.StatusForbidden, DefaultDeniedMessage)
+
+	mw.Handle(ctx)
+}
+
+func TestGuardOptionsLastOneWins(t *testing.T) {
+	mw := Authz(WithGuards("basic", "admin"), WithGuard("legacy")).(*authzMiddleware)
+	assert.Equal(t, []string{"legacy"}, mw.guardsToCheck())
+	assert.Empty(t, mw.guards)
+
+	mw = Authz(WithGuard("legacy"), WithGuards("basic", "admin")).(*authzMiddleware)
+	assert.Equal(t, []string{"basic", "admin"}, mw.guardsToCheck())
+	assert.Empty(t, mw.guard)
+}
+
+func TestAuthzSignatureWithGuardsAndTokens(t *testing.T) {
+	assert.Equal(t, "goravel:authz:any:basic,admin", Authz(WithGuards("basic", "admin")).Signature())
+	assert.Equal(t, "goravel:authz:tokens:articles,read", Ability("articles", "read").Signature())
+}
