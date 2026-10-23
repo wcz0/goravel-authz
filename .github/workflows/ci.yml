@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - goravel-1.17
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Go ${{ matrix.go-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The minimum version declared in go.mod plus the latest release, so an
+        # accidental use of a newer language or standard library feature fails
+        # before the tag is pushed.
+        go-version:
+          - "1.25.x"
+          - "stable"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'ed:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race -count=1 -cover ./...
+
+  release-line:
+    name: Release line matches Goravel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Every release line must depend on the Goravel version it is named after,
+      # and the framework and sqlite modules must stay on the same line:
+      # goravel-1.17 on v1.17.x, main on v1.18.x.
+      - name: Check the framework line
+        run: |
+          framework="$(go list -m -f '{{.Version}}' github.com/goravel/framework)"
+          sqlite="$(go list -m -f '{{.Version}}' github.com/goravel/sqlite)"
+
+          if [ "$framework" != "$sqlite" ]; then
+            echo "::error::goravel/framework ($framework) and goravel/sqlite ($sqlite) must be on the same release line"
+            exit 1
+          fi
+
+          branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          case "$branch" in
+            goravel-1.*)
+              expected="v${branch#goravel-}"
+              case "$framework" in
+                "$expected".*) echo "ok: $branch uses framework $framework" ;;
+                *)
+                  echo "::error::$branch must depend on goravel/framework ${expected}.x, found $framework"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "ok: $branch uses framework $framework"
+              ;;
+          esac
