@@ -13,7 +13,7 @@ import (
 // error level.
 type CasbinLogger struct {
 	guard   string
-	logger  log.Log
+	logger  log.Writer
 	enabled atomic.Bool
 }
 
@@ -21,7 +21,7 @@ var _ casbinlog.Logger = (*CasbinLogger)(nil)
 
 // NewCasbinLogger creates a logger for the given guard. enabled controls the
 // initial state; it can be changed at runtime through EnableLog.
-func NewCasbinLogger(guard string, logger log.Log, enabled bool) *CasbinLogger {
+func NewCasbinLogger(guard string, logger log.Writer, enabled bool) *CasbinLogger {
 	instance := &CasbinLogger{guard: guard, logger: logger}
 	instance.enabled.Store(enabled)
 

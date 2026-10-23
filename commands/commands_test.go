@@ -92,7 +92,7 @@ func TestPolicyAddCommand(t *testing.T) {
 		command := NewPolicyAddCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Success("Policy added: admin /admin/users GET").Once()
 
@@ -107,7 +107,7 @@ func TestPolicyAddCommand(t *testing.T) {
 
 		command := NewPolicyAddCommand(testOpen(enforcer))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Warning("Policy already exists: admin /admin/users GET").Once()
 
@@ -117,7 +117,7 @@ func TestPolicyAddCommand(t *testing.T) {
 	t.Run("rejects too few values", func(t *testing.T) {
 		command := NewPolicyAddCommand(failingOpen())
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin"}).Once()
 
 		err := command.Handle(ctx)
 		require.Error(t, err)
@@ -129,7 +129,7 @@ func TestPolicyAddCommand(t *testing.T) {
 		command := NewPolicyAddCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -143,7 +143,7 @@ func TestPolicyAddCommand(t *testing.T) {
 		command := NewPolicyAddCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -155,7 +155,7 @@ func TestPolicyAddCommand(t *testing.T) {
 	t.Run("returns open errors", func(t *testing.T) {
 		command := NewPolicyAddCommand(failingOpen())
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -206,7 +206,7 @@ func TestPolicyRemoveCommand(t *testing.T) {
 
 		command := NewPolicyRemoveCommand(testOpen(enforcer))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Success("Policy removed: admin /admin/users GET").Once()
 
@@ -219,7 +219,7 @@ func TestPolicyRemoveCommand(t *testing.T) {
 		command := NewPolicyRemoveCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Warning("Policy not found: admin /admin/users GET").Once()
 
@@ -229,7 +229,7 @@ func TestPolicyRemoveCommand(t *testing.T) {
 	t.Run("rejects too few values", func(t *testing.T) {
 		command := NewPolicyRemoveCommand(failingOpen())
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin"}).Once()
 
 		err := command.Handle(ctx)
 		require.Error(t, err)
@@ -242,7 +242,7 @@ func TestPolicyRemoveCommand(t *testing.T) {
 		command := NewPolicyRemoveCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"admin", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"admin", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -318,7 +318,7 @@ func TestGroupCommands(t *testing.T) {
 		command := NewGroupAddCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "admin"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Success("Grouping added: alice admin").Once()
 
@@ -333,7 +333,7 @@ func TestGroupCommands(t *testing.T) {
 
 		command := NewGroupAddCommand(testOpen(enforcer))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "admin"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Warning("Grouping already exists: alice admin").Once()
 
@@ -345,7 +345,7 @@ func TestGroupCommands(t *testing.T) {
 		command := NewGroupAddCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "admin", "tenant"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "admin", "tenant"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -358,7 +358,7 @@ func TestGroupCommands(t *testing.T) {
 		command := NewGroupAddCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "admin"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -374,7 +374,7 @@ func TestGroupCommands(t *testing.T) {
 
 		command := NewGroupRemoveCommand(testOpen(enforcer))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "admin"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Success("Grouping removed: alice admin").Once()
 
@@ -385,7 +385,7 @@ func TestGroupCommands(t *testing.T) {
 	t.Run("reports a missing grouping", func(t *testing.T) {
 		command := NewGroupRemoveCommand(testOpen(newTestEnforcer(t)))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "admin"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Warning("Grouping not found: alice admin").Once()
 
@@ -398,7 +398,7 @@ func TestGroupCommands(t *testing.T) {
 		command := NewGroupRemoveCommand(testOpen(enforcer))
 
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "admin"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "admin"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -422,7 +422,7 @@ func TestEnforceCommand(t *testing.T) {
 	t.Run("allows an inherited role", func(t *testing.T) {
 		command := NewEnforceCommand(testOpen(newEnforcerWithAlice(t)))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Success("Allowed: alice /admin/users GET").Once()
 
@@ -432,7 +432,7 @@ func TestEnforceCommand(t *testing.T) {
 	t.Run("denies an unknown subject", func(t *testing.T) {
 		command := NewEnforceCommand(testOpen(newEnforcerWithAlice(t)))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"bob", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"bob", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 		ctx.EXPECT().Warning("Denied: bob /admin/users GET").Once()
 
@@ -442,7 +442,7 @@ func TestEnforceCommand(t *testing.T) {
 	t.Run("validates the request size", func(t *testing.T) {
 		command := NewEnforceCommand(testOpen(newTestEnforcer(t)))
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "/admin/users"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "/admin/users"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)
@@ -453,7 +453,7 @@ func TestEnforceCommand(t *testing.T) {
 	t.Run("returns open errors", func(t *testing.T) {
 		command := NewEnforceCommand(failingOpen())
 		ctx := mocksconsole.NewContext(t)
-		ctx.EXPECT().ArgumentStringSlice("values").Return([]string{"alice", "/admin/users", "GET"}).Once()
+		ctx.EXPECT().Arguments().Return([]string{"alice", "/admin/users", "GET"}).Once()
 		ctx.EXPECT().Option("guard").Return("").Once()
 
 		err := command.Handle(ctx)

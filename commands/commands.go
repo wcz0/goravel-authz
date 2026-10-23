@@ -23,26 +23,16 @@ func guardFlag() command.Flag {
 	}
 }
 
-func valuesArgument(usage string) command.Argument {
-	return &command.ArgumentStringSlice{
-		Name:  "values",
-		Usage: usage,
-		Min:   2,
-		Max:   -1,
-	}
-}
-
 func valuesExtend(usage string) command.Extend {
 	return command.Extend{
 		Category:  category,
-		ArgsUsage: "<values...>",
+		ArgsUsage: usage,
 		Flags:     []command.Flag{guardFlag()},
-		Arguments: []command.Argument{valuesArgument(usage)},
 	}
 }
 
 func requireValues(ctx console.Context, count int) ([]string, error) {
-	values := ctx.ArgumentStringSlice("values")
+	values := ctx.Arguments()
 	if len(values) < count {
 		return nil, fmt.Errorf("authz: expected at least %d values, got %d", count, len(values))
 	}

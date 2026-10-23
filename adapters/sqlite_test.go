@@ -17,7 +17,6 @@ import (
 	databaseorm "github.com/goravel/framework/database/orm"
 	frameworkjson "github.com/goravel/framework/foundation/json"
 	frameworklog "github.com/goravel/framework/log"
-	"github.com/goravel/framework/support"
 	"github.com/goravel/sqlite"
 	"github.com/wcz0/goravel-authz/models"
 )
@@ -39,14 +38,13 @@ const createTableSQL = `CREATE TABLE casbin_rules (
 func newSQLiteStore(t *testing.T) (*ormStore, *models.Rule) {
 	t.Helper()
 
-	support.DontVerifyAppKey = true
 	cfg := config.NewApplication("")
-	logger, err := frameworklog.NewApplication(context.Background(), nil, cfg, frameworkjson.New())
+	logger, err := frameworklog.NewApplication(cfg, frameworkjson.New())
 	require.NoError(t, err)
 
 	dbPath := filepath.Join(t.TempDir(), "authz.db")
-	// The framework caches pools per connection name, so a fresh database
-	// per test needs the previous pool dropped before building a new one.
+	// Goravel caches one pool per connection name, so a fresh database per
+	// test needs the previous pool dropped before building a new one.
 	databasedriver.ResetConnections()
 
 	cfg.Add("database", map[string]any{
@@ -64,8 +62,8 @@ func newSQLiteStore(t *testing.T) (*ormStore, *models.Rule) {
 
 	orm, err := databaseorm.BuildOrm(context.Background(), cfg, "sqlite", logger, func(key ...any) {})
 	require.NoError(t, err)
-	// Goravel 1.17 drops cached pools without closing them, so the SQLite
-	// file would still be locked when the temporary directory is removed.
+	// Close the pool so the SQLite file is unlocked before the temporary
+	// directory is removed, and drop the cached pool for the next test.
 	t.Cleanup(func() {
 		if db, err := orm.DB(); err == nil {
 			_ = db.Close()

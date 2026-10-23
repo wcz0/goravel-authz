@@ -52,14 +52,17 @@ func read(config configReader) Settings {
 
 // Logger returns the Goravel logger bound to the configured channel. It
 // returns nil when logging is disabled, which lets callers skip the work.
-func (s Settings) Logger() log.Log {
+//
+// Goravel 1.16 returns a Writer from Channel, so the whole package logs
+// through Writer: it carries every method used here, including With.
+func (s Settings) Logger() log.Writer {
 	if !s.Enabled || foundation.App == nil {
 		return nil
 	}
 
 	logger := facades.Log()
 	if s.Channel != "" {
-		logger = logger.Channel(s.Channel)
+		return logger.Channel(s.Channel)
 	}
 
 	return logger

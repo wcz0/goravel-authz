@@ -64,7 +64,7 @@ type authzMiddleware struct {
 	action  ActionResolver
 	denied  DeniedHandler
 
-	logger     contractslog.Log
+	logger     contractslog.Writer
 	logAllowed bool
 	logDenied  bool
 

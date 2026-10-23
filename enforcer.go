@@ -166,7 +166,7 @@ func builderLock(name string) *sync.Mutex {
 // attachLogger routes Casbin's own diagnostics through the Goravel logger.
 // They stay disabled until casbin.log.casbin is enabled or the application
 // calls EnableLog at runtime.
-func attachLogger(instance *casbin.SyncedEnforcer, name string, logger log.Log, enabled bool) {
+func attachLogger(instance *casbin.SyncedEnforcer, name string, logger log.Writer, enabled bool) {
 	instance.SetLogger(logging.NewCasbinLogger(name, logger, enabled))
 }
 
