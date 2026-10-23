@@ -19,7 +19,7 @@
 ## 安装
 
 ```shell
-go get github.com/wcz0/goravel-authz@v1.17.0
+go get github.com/wcz0/goravel-authz@v1.17.1
 ```
 
 安装资源并执行数据库迁移：
