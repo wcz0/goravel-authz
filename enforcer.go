@@ -17,9 +17,24 @@ var (
 	enforcersMu sync.RWMutex
 	enforcers   = make(map[string]*casbin.SyncedEnforcer)
 
+	// buildersMu guards builders, which holds one lock per model name. Building
+	// an enforcer loads its policies from the database, so the global lock is
+	// only held for map access and two models can be built at the same time.
+	buildersMu sync.Mutex
+	builders   = make(map[string]*sync.Mutex)
+
 	// adapterFactory is swapped by tests to inject a store.
 	adapterFactory = func(rule adapters.Rule) *adapters.Adapter {
 		return adapters.NewAdapter(rule)
+	}
+
+	// configString and configEntry are swapped by tests to resolve the casbin
+	// configuration without booting a Goravel application.
+	configString = func(key string) string {
+		return facades.Config().GetString(key)
+	}
+	configEntry = func(key string) any {
+		return facades.Config().Get(key)
 	}
 )
 
@@ -95,10 +110,17 @@ func lookup(name string) (*casbin.SyncedEnforcer, bool) {
 }
 
 func enforcerFor(name string, rule adapters.Rule) (*casbin.SyncedEnforcer, error) {
-	enforcersMu.Lock()
-	defer enforcersMu.Unlock()
+	if instance, ok := lookup(name); ok {
+		return instance, nil
+	}
 
-	if instance, ok := enforcers[name]; ok {
+	// The policy load happens while this per-model lock is held instead of the
+	// global one, so a slow database only delays the model being built.
+	lock := builderLock(name)
+	lock.Lock()
+	defer lock.Unlock()
+
+	if instance, ok := lookup(name); ok {
 		return instance, nil
 	}
 
@@ -118,9 +140,27 @@ func enforcerFor(name string, rule adapters.Rule) (*casbin.SyncedEnforcer, error
 		logger.With(map[string]any{"guard": name}).Info("authz: enforcer loaded")
 	}
 
+	enforcersMu.Lock()
 	enforcers[name] = instance
+	enforcersMu.Unlock()
 
 	return instance, nil
+}
+
+// builderLock returns the lock that serializes the creation of the enforcer of
+// name. The map is never pruned: it holds at most one entry per configured
+// model, and dropping an entry could hand out two locks for the same model.
+func builderLock(name string) *sync.Mutex {
+	buildersMu.Lock()
+	defer buildersMu.Unlock()
+
+	lock, ok := builders[name]
+	if !ok {
+		lock = &sync.Mutex{}
+		builders[name] = lock
+	}
+
+	return lock
 }
 
 // attachLogger routes Casbin's own diagnostics through the Goravel logger.
@@ -135,11 +175,11 @@ func resolveName(name string) string {
 		return name
 	}
 
-	return facades.Config().GetString("casbin.default")
+	return configString("casbin.default")
 }
 
 func resolveRule(name string) (adapters.Rule, error) {
-	entry := facades.Config().Get("casbin.models." + name)
+	entry := configEntry("casbin.models." + name)
 	if entry == nil {
 		return nil, fmt.Errorf("casbin: model %q is not defined under casbin.models", name)
 	}
