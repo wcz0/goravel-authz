@@ -13,6 +13,18 @@
 
 v0.x 为旧命名，历史记录保留在下方。
 
+## [Unreleased]
+
+### Added
+
+- 增加 CI：gofmt、`go vet`、`go test -race` 覆盖 Go 1.25 与最新版本，并校验 `goravel/framework` 与 `goravel/sqlite` 始终在同一版本线、`goravel-1.x` 分支与所依赖的框架次版本一致。
+- 补齐 Enforcer 生命周期测试：默认模型解析、模型未定义、配置项不是 `adapters.Rule`、不支持的 `Model()` 类型、`Reload` 创建与刷新、`Reset`，以及并发首次加载只构建一次。
+- 补齐 `package:install` 模板测试：生成的配置与迁移文件必须是合法 Go，内置 RBAC 模型必须能被 Casbin 解析。
+
+### Changed
+
+- 按模型名加锁创建 enforcer：首次加载策略期间的数据库查询不再持有全局锁，一个模型的慢查询不会阻塞其他模型的首次访问。
+
 ## [1.17.0] - 2026-10-23
 
 ### Added
