@@ -1,22 +1,46 @@
 # Goravel Authz
 
-Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin](https://casbin.org): ACL, RBAC and ABAC models backed by your own database table, with multiple independent enforcers, policy caching through the Goravel cache and route middleware.
+[![CI](https://github.com/wcz0/goravel-authz/actions/workflows/ci.yml/badge.svg?branch=goravel-1.15)](https://github.com/wcz0/goravel-authz/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/wcz0/goravel-authz.svg)](https://pkg.go.dev/github.com/wcz0/goravel-authz)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-[中文文档](./README_zh.md) · [Changelog](./CHANGELOG.md)
+**English** · [简体中文](./README_zh.md) · [Changelog](./CHANGELOG.md)
+
+Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin](https://casbin.org). Policies live in your own database table, every model gets its own enforcer, table and cache, and a route middleware turns those policies into HTTP decisions.
+
+- **Casbin models** — ACL, RBAC and ABAC, driven by the model text you provide. A working RBAC model is generated at install time, so the package is useful before you write any configuration.
+- **Independent enforcers** — one per model, each with its own table, connection, model and cache. They are created on first use and safe for concurrent use.
+- **The full adapter surface** — Casbin's `BatchAdapter`, `UpdatableAdapter` and `FilteredAdapter` are implemented, so batch, update and filtered enforcer calls persist without any extra code.
+- **Transactional writes** — every multi-row write runs in a transaction; a failed batch leaves the table untouched.
+- **Policy cache** — stored through the Goravel cache (in-memory, file or Redis) and flushed on every write.
+- **Native Goravel integration** — route middleware, `Gate` abilities, the `Auth` user, the logger and Artisan commands.
+
+## Contents
+
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Middleware](#middleware)
+- [Managing policies](#managing-policies)
+- [Logging](#logging)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Requirements
 
-- Go 1.24+
-- Goravel 1.15.x for this v1.15.x line; the other lines are listed below
+- Go 1.24 or newer
+- Goravel 1.15.x — this branch is the v1.15.x release line
 
-Release lines follow the Goravel minor version. Pick the line that matches your framework:
+The version number follows the Goravel minor version; every line is released from its own branch. Pick the line that matches your framework:
 
-| goravel-authz | Goravel |
-| --- | --- |
-| v1.18.x | v1.18.x |
-| v1.17.x | v1.17.x |
-| v1.16.x | v1.16.x |
-| v1.15.x | v1.15.x |
+| goravel-authz | Branch | Goravel |
+| --- | --- | --- |
+| v1.18.x | `main` | v1.18.x |
+| v1.17.x | `goravel-1.17` | v1.17.x |
+| v1.16.x | `goravel-1.16` | v1.16.x |
+| v1.15.x | `goravel-1.15` | v1.15.x |
 
 ## Installation
 
@@ -31,7 +55,7 @@ go run . artisan package:install github.com/wcz0/goravel-authz
 go run . artisan migrate
 ```
 
-`package:install` registers `&authz.ServiceProvider{}` in `bootstrap/providers.go`, writes `config/casbin.go` and `config/casbin-rbac-model.conf`, and creates and registers the `casbin_rules` migration.
+`package:install` registers `&authz.ServiceProvider{}` in the application bootstrap file, writes `config/casbin.go` and `config/casbin-rbac-model.conf`, and creates and registers the `casbin_rules` migration. `package:uninstall` removes all of it again.
 
 ## Configuration
 
@@ -58,7 +82,7 @@ func init() {
 }
 ```
 
-Each entry is a model. Every model owns its table, its database connection, its casbin model and its cache, which is how several enforcers can live in the same application:
+Each entry under `models` is a model: it owns its table, its database connection, its Casbin model and its cache, which is how several enforcers can live in the same application.
 
 ```go
 import "github.com/wcz0/goravel-authz/models"
@@ -131,7 +155,7 @@ This is evaluated as `Enforce(subject, "articles", "read")`. The subject is the 
 ```go
 import authz "github.com/wcz0/goravel-authz/facades"
 
-e := authz.Enforcer()          // casbin.default
+e := authz.Enforcer()            // casbin.default
 admin := authz.Enforcer("admin") // a second, independent enforcer
 
 e.AddPolicy("admin", "/admin-api/users", "GET")
@@ -140,7 +164,7 @@ admin.AddPolicy("admin", "/api/users", "GET")
 allowed, err := e.Enforce("alice", "/admin-api/users", "GET")
 ```
 
-Enforcers are created on first use, cached per model name and safe for concurrent use (`casbin.SyncedEnforcer`).
+Enforcers are created on first use, cached per model name and safe for concurrent use (`casbin.SyncedEnforcer`). Creating an enforcer is guarded per model, so a slow first load of one model never blocks another one.
 
 ### Batch, update and filtered operations
 
@@ -291,4 +315,20 @@ Set `casbin` to `true` to forward Casbin's model, policy and enforce output to t
 go test ./...
 ```
 
-The adapter tests run against the in-memory transactional store. The real SQLite round trip is part of the v1.16, v1.17 and v1.18 lines only, because the official `goravel/sqlite` driver requires Goravel 1.16.
+The adapter tests run against the in-memory transactional store. The real SQLite round trip belongs to the v1.16, v1.17 and v1.18 lines only, because the official `goravel/sqlite` driver requires Goravel 1.16. CI also runs the whole suite with `-race`.
+
+## Contributing
+
+Issues and pull requests are welcome. Before opening a pull request, run:
+
+```shell
+gofmt -l .
+go vet ./...
+go test ./...
+```
+
+CI runs the same checks plus `go test -race` on every release line, and refuses a pull request whose branch does not match the Goravel version it depends on.
+
+## License
+
+[MIT](./LICENSE) © 2024 wcz0
