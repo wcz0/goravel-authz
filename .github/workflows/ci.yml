@@ -4,35 +4,31 @@ on:
   push:
     branches:
       - main
+      - goravel-1.15
+      - goravel-1.16
       - goravel-1.17
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   test:
-    name: Test (Go ${{ matrix.go-version }})
+    name: Test
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        # The minimum version declared in go.mod plus the latest release, so an
-        # accidental use of a newer language or standard library feature fails
-        # before the tag is pushed.
-        go-version:
-          - "1.25.x"
-          - "stable"
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
+      # The toolchain declared by go.mod is the oldest Go version the release
+      # line supports, so testing it catches features that are too new for the
+      # users of that line.
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version-file: go.mod
           cache: true
 
       - name: Check formatting
@@ -56,25 +52,29 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
       # Every release line must depend on the Goravel version it is named after,
-      # and the framework and sqlite modules must stay on the same line:
-      # goravel-1.17 on v1.17.x, main on v1.18.x.
+      # and the sqlite driver, when used, must target the same framework line.
+      # The v1.15 line has no sqlite driver: the official one requires 1.16.
       - name: Check the framework line
         run: |
           framework="$(go list -m -f '{{.Version}}' github.com/goravel/framework)"
-          sqlite="$(go list -m -f '{{.Version}}' github.com/goravel/sqlite)"
 
-          if [ "$framework" != "$sqlite" ]; then
-            echo "::error::goravel/framework ($framework) and goravel/sqlite ($sqlite) must be on the same release line"
-            exit 1
+          sqlite_dir="$(go mod download -json github.com/goravel/sqlite 2>/dev/null | grep -o '"Dir": *"[^"]*"' | sed 's/.*: *"//; s/"$//')"
+          if [ -n "$sqlite_dir" ] && [ -f "$sqlite_dir/go.mod" ]; then
+            sqlite_framework="$(awk '$1 == "github.com/goravel/framework" {print $2}' "$sqlite_dir/go.mod" | head -n1)"
+            if [ -n "$sqlite_framework" ] && [ "${framework%.*}" != "${sqlite_framework%.*}" ]; then
+              echo "::error::goravel/sqlite targets $sqlite_framework, which does not match goravel/framework $framework"
+              exit 1
+            fi
+            echo "ok: goravel/sqlite targets $sqlite_framework"
           fi
 
           branch="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
