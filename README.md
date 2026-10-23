@@ -7,7 +7,7 @@ Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin
 ## Requirements
 
 - Go 1.25+
-- Goravel 1.18.x for the v1.18.x line, Goravel 1.17.x for the v1.17.x line
+- Goravel 1.17.x for the v1.17.x line, Goravel 1.18.x for the v1.18.x line
 
 Release lines follow the Goravel minor version. Pick the line that matches your framework:
 
@@ -19,7 +19,7 @@ Release lines follow the Goravel minor version. Pick the line that matches your 
 ## Installation
 
 ```shell
-go get github.com/wcz0/goravel-authz@v1.18.0
+go get github.com/wcz0/goravel-authz@v1.17.0
 ```
 
 Install the package resources and migrate:

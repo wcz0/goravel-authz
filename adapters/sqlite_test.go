@@ -41,14 +41,13 @@ func newSQLiteStore(t *testing.T) (*ormStore, *models.Rule) {
 
 	support.DontVerifyAppKey = true
 	cfg := config.NewApplication("")
-	logger, err := frameworklog.NewApplication(context.Background(), nil, cfg, frameworkjson.New(), nil)
+	logger, err := frameworklog.NewApplication(context.Background(), nil, cfg, frameworkjson.New())
 	require.NoError(t, err)
 
 	dbPath := filepath.Join(t.TempDir(), "authz.db")
 	// The framework caches pools per connection name, so a fresh database
 	// per test needs the previous pool dropped before building a new one.
-	t.Cleanup(databasedriver.CloseConnections)
-	databasedriver.CloseConnections()
+	databasedriver.ResetConnections()
 
 	cfg.Add("database", map[string]any{
 		"default": "sqlite",
@@ -63,8 +62,16 @@ func newSQLiteStore(t *testing.T) (*ormStore, *models.Rule) {
 		},
 	})
 
-	orm, err := databaseorm.BuildOrm(context.Background(), cfg, "sqlite", logger, func(key ...any) {}, nil)
+	orm, err := databaseorm.BuildOrm(context.Background(), cfg, "sqlite", logger, func(key ...any) {})
 	require.NoError(t, err)
+	// Goravel 1.17 drops cached pools without closing them, so the SQLite
+	// file would still be locked when the temporary directory is removed.
+	t.Cleanup(func() {
+		if db, err := orm.DB(); err == nil {
+			_ = db.Close()
+		}
+		databasedriver.ResetConnections()
+	})
 
 	_, err = orm.Query().Exec(createTableSQL)
 	require.NoError(t, err)

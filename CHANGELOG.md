@@ -13,6 +13,19 @@
 
 v0.x 为旧命名，历史记录保留在下方。
 
+## [1.17.0] - 2026-10-23
+
+### Added
+
+- 与 v1.18.0 相同的 Casbin Adapter 能力：批量增删、单条/批量更新、按条件更新和过滤加载，以及事务回滚。
+- 与 v1.18.0 相同的 HTTP 中间件能力：`WithGuards` 多模型任一放行、`WithTokens`、`Ability` 固定能力检查，以及 Goravel Auth 与 Gate 接入。
+
+### Changed
+
+- 适配 Goravel 1.17 的中间件类型：`Authz` 和 `Ability` 返回 `func(http.Context)`。
+- `authz:policy:list` 在控制台中自行渲染对齐表格，因为 Goravel 1.17 的 `console.Context` 没有 `Table` 方法。
+- 适配 Goravel 1.17 的日志、ORM 构造参数与数据库连接池重置接口。
+
 ## [1.18.0] - 2026-10-23
 
 ### Added

@@ -70,7 +70,7 @@ func (l *recordingLogger) add(level, message string) {
 
 func TestAuthzLogsAllowedRequest(t *testing.T) {
 	logger := newRecordingLogger()
-	mw := Authz(WithGuard("admin")).(*authzMiddleware)
+	mw := newAuthz(WithGuard("admin"))
 	mw.logger = logger
 	mw.logAllowed = true
 	mw.logDenied = true
@@ -99,7 +99,7 @@ func TestAuthzLogsAllowedRequest(t *testing.T) {
 
 func TestAuthzLogsDeniedRequest(t *testing.T) {
 	logger := newRecordingLogger()
-	mw := Authz(WithGuard("admin")).(*authzMiddleware)
+	mw := newAuthz(WithGuard("admin"))
 	mw.logger = logger
 	mw.logAllowed = true
 	mw.logDenied = true
@@ -126,7 +126,7 @@ func TestAuthzLogsDeniedRequest(t *testing.T) {
 
 func TestAuthzLogsMissingSubject(t *testing.T) {
 	logger := newRecordingLogger()
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.logger = logger
 	mw.logDenied = true
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
@@ -150,9 +150,9 @@ func TestAuthzLogsMissingSubject(t *testing.T) {
 
 func TestAuthzLogsSubjectResolverFailure(t *testing.T) {
 	logger := newRecordingLogger()
-	mw := Authz(WithSubject(func(ctx contractshttp.Context) (string, error) {
+	mw := newAuthz(WithSubject(func(ctx contractshttp.Context) (string, error) {
 		return "", errors.New("token expired")
-	})).(*authzMiddleware)
+	}))
 	mw.logger = logger
 
 	ctx, _, response := newMockContext(t)
@@ -169,7 +169,7 @@ func TestAuthzLogsSubjectResolverFailure(t *testing.T) {
 
 func TestAuthzLogsEnforcerFailure(t *testing.T) {
 	logger := newRecordingLogger()
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.logger = logger
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return nil, errors.New("model is broken")
@@ -193,7 +193,7 @@ func TestAuthzLogsEnforcerFailure(t *testing.T) {
 
 func TestAuthzRespectsLogSwitches(t *testing.T) {
 	logger := newRecordingLogger()
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.logger = logger
 	mw.logAllowed = false
 	mw.logDenied = false

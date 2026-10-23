@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"slices"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/goravel/framework/contracts/console"
 	"github.com/goravel/framework/contracts/console/command"
@@ -178,7 +180,49 @@ func (receiver *PolicyListCommand) Handle(ctx console.Context) error {
 	for index := 0; index < columns; index++ {
 		headers = append(headers, fmt.Sprintf("V%d", index))
 	}
-	ctx.Table(headers, rows)
+	ctx.Line(renderTable(headers, rows))
 
 	return nil
+}
+
+// renderTable formats rows as aligned columns. Goravel v1.17 has no native
+// table helper on the console context, so the command prints the table itself.
+func renderTable(headers []string, rows [][]string) string {
+	widths := make([]int, len(headers))
+	for index, header := range headers {
+		widths[index] = utf8.RuneCountInString(header)
+	}
+	for _, row := range rows {
+		for index, cell := range row {
+			if index >= len(widths) {
+				continue
+			}
+			if width := utf8.RuneCountInString(cell); width > widths[index] {
+				widths[index] = width
+			}
+		}
+	}
+
+	var builder strings.Builder
+	writeRow := func(cells []string) {
+		var row strings.Builder
+		for index, cell := range cells {
+			if index > 0 {
+				row.WriteString("  ")
+			}
+			row.WriteString(cell)
+			if index < len(widths)-1 {
+				row.WriteString(strings.Repeat(" ", widths[index]-utf8.RuneCountInString(cell)))
+			}
+		}
+		builder.WriteString(strings.TrimRight(row.String(), " "))
+		builder.WriteString("\n")
+	}
+
+	writeRow(headers)
+	for _, row := range rows {
+		writeRow(row)
+	}
+
+	return strings.TrimRight(builder.String(), "\n")
 }

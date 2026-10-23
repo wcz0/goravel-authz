@@ -68,7 +68,7 @@ func expectDenied(t *testing.T, response *mockshttp.ContextResponse, status int,
 }
 
 func TestAuthzAllowsRequest(t *testing.T) {
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
 		assert.Equal(t, "", name)
 		return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
@@ -84,7 +84,7 @@ func TestAuthzAllowsRequest(t *testing.T) {
 }
 
 func TestAuthzAllowsThroughRole(t *testing.T) {
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	enforcer := newTestEnforcer(t, []string{"admin", "/admin/users", "GET"})
 	_, err := enforcer.AddGroupingPolicy("alice", "admin")
 	require.NoError(t, err)
@@ -100,7 +100,7 @@ func TestAuthzAllowsThroughRole(t *testing.T) {
 }
 
 func TestAuthzDeniesRequest(t *testing.T) {
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
 	}
@@ -116,7 +116,7 @@ func TestAuthzDeniesRequest(t *testing.T) {
 }
 
 func TestAuthzMissingSubjectIsDenied(t *testing.T) {
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		t.Fatal("the enforcer must not be opened without a subject")
 		return nil, nil
@@ -130,9 +130,9 @@ func TestAuthzMissingSubjectIsDenied(t *testing.T) {
 }
 
 func TestAuthzSubjectResolverErrorIsDenied(t *testing.T) {
-	mw := Authz(WithSubject(func(contractshttp.Context) (string, error) {
+	mw := newAuthz(WithSubject(func(contractshttp.Context) (string, error) {
 		return "alice", errors.New("token expired")
-	})).(*authzMiddleware)
+	}))
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		t.Fatal("the enforcer must not be opened when the subject resolver fails")
 		return nil, nil
@@ -145,7 +145,7 @@ func TestAuthzSubjectResolverErrorIsDenied(t *testing.T) {
 }
 
 func TestAuthzFallsBackToRequestPath(t *testing.T) {
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t, []string{"alice", "/users/1", "GET"}), nil
 	}
@@ -162,12 +162,12 @@ func TestAuthzFallsBackToRequestPath(t *testing.T) {
 
 func TestAuthzCustomResolvers(t *testing.T) {
 	var opened string
-	mw := Authz(
+	mw := newAuthz(
 		WithGuard("admin"),
 		WithSubject(func(contractshttp.Context) (string, error) { return "bob", nil }),
 		WithObject(func(contractshttp.Context) string { return "/reports" }),
 		WithAction(func(contractshttp.Context) string { return "read" }),
-	).(*authzMiddleware)
+	)
 	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
 		opened = name
 		return newTestEnforcer(t, []string{"bob", "/reports", "read"}), nil
@@ -181,7 +181,7 @@ func TestAuthzCustomResolvers(t *testing.T) {
 }
 
 func TestAuthzEnforcerErrorReturns500(t *testing.T) {
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return nil, errors.New("model is broken")
 	}
@@ -198,9 +198,9 @@ func TestAuthzEnforcerErrorReturns500(t *testing.T) {
 
 func TestAuthzCustomDeniedHandler(t *testing.T) {
 	var got Decision
-	mw := Authz(WithDenied(func(_ contractshttp.Context, decision Decision) {
+	mw := newAuthz(WithDenied(func(_ contractshttp.Context, decision Decision) {
 		got = decision
-	})).(*authzMiddleware)
+	}))
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t), nil
 	}
@@ -221,9 +221,12 @@ func TestAuthzCustomDeniedHandler(t *testing.T) {
 	request.AssertNotCalled(t, "Next")
 }
 
-func TestAuthzSignature(t *testing.T) {
-	assert.Equal(t, "goravel:authz", Authz().Signature())
-	assert.Equal(t, "goravel:authz:admin", Authz(WithGuard("admin")).Signature())
+func TestMiddlewareMatchesTheFrameworkType(t *testing.T) {
+	// A Goravel 1.17 middleware is a func(http.Context); both constructors
+	// must be usable wherever contractshttp.Middleware is expected.
+	var _ contractshttp.Middleware = Authz()
+	var _ contractshttp.Middleware = Authz(WithGuard("admin"), WithTokens("articles", "read"))
+	var _ contractshttp.Middleware = Ability("articles", "read")
 }
 
 func TestSetSubject(t *testing.T) {
@@ -236,12 +239,12 @@ func TestSetSubject(t *testing.T) {
 }
 
 func TestAuthzIgnoresNilOptions(t *testing.T) {
-	mw := Authz(
+	mw := newAuthz(
 		WithSubject(nil),
 		WithObject(nil),
 		WithAction(nil),
 		WithDenied(nil),
-	).(*authzMiddleware)
+	)
 
 	ctx, request, _ := newMockContext(t)
 	ctx.EXPECT().Value(SubjectKey).Return("alice")
@@ -269,7 +272,7 @@ func stubSubjectFromAuth(t *testing.T, subject string, err error) {
 func TestAuthzFallsBackToGoravelAuth(t *testing.T) {
 	stubSubjectFromAuth(t, "alice", nil)
 
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
 	}
@@ -286,7 +289,7 @@ func TestAuthzFallsBackToGoravelAuth(t *testing.T) {
 func TestAuthzPrefersStoredSubjectOverGoravelAuth(t *testing.T) {
 	stubSubjectFromAuth(t, "auth-bob", nil)
 
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t, []string{"alice", "/admin/users", "GET"}), nil
 	}
@@ -303,7 +306,7 @@ func TestAuthzPrefersStoredSubjectOverGoravelAuth(t *testing.T) {
 func TestAuthzAuthResolverErrorIsDenied(t *testing.T) {
 	stubSubjectFromAuth(t, "", errors.New("auth is misconfigured"))
 
-	mw := Authz().(*authzMiddleware)
+	mw := newAuthz()
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		t.Fatal("the enforcer must not be opened without a subject")
 		return nil, nil
@@ -317,7 +320,7 @@ func TestAuthzAuthResolverErrorIsDenied(t *testing.T) {
 }
 
 func TestAuthzAllowsAnyOfMultipleGuards(t *testing.T) {
-	mw := Authz(WithGuards("basic", "admin")).(*authzMiddleware)
+	mw := newAuthz(WithGuards("basic", "admin"))
 
 	var opened []string
 	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
@@ -342,10 +345,10 @@ func TestAuthzAllowsAnyOfMultipleGuards(t *testing.T) {
 
 func TestAuthzDeniesWhenEveryGuardDenies(t *testing.T) {
 	var got Decision
-	mw := Authz(
+	mw := newAuthz(
 		WithGuards("basic", "admin"),
 		WithDenied(func(_ contractshttp.Context, decision Decision) { got = decision }),
-	).(*authzMiddleware)
+	)
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t), nil
 	}
@@ -367,7 +370,7 @@ func TestAuthzDeniesWhenEveryGuardDenies(t *testing.T) {
 }
 
 func TestAuthzAllowsWhenOneGuardAllowsAndAnotherFails(t *testing.T) {
-	mw := Authz(WithGuards("broken", "admin")).(*authzMiddleware)
+	mw := newAuthz(WithGuards("broken", "admin"))
 	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
 		if name == "broken" {
 			return nil, errors.New("model is broken")
@@ -386,7 +389,7 @@ func TestAuthzAllowsWhenOneGuardAllowsAndAnotherFails(t *testing.T) {
 }
 
 func TestAuthzReturns500WhenNoGuardAllowsAndOneFails(t *testing.T) {
-	mw := Authz(WithGuards("broken", "admin")).(*authzMiddleware)
+	mw := newAuthz(WithGuards("broken", "admin"))
 	mw.open = func(name string) (*casbin.SyncedEnforcer, error) {
 		if name == "broken" {
 			return nil, errors.New("model is broken")
@@ -405,8 +408,8 @@ func TestAuthzReturns500WhenNoGuardAllowsAndOneFails(t *testing.T) {
 	request.AssertNotCalled(t, "Next")
 }
 
-func TestAbilityUsesFixedTokens(t *testing.T) {
-	mw := Ability("articles", "read").(*authzMiddleware)
+func TestWithTokensUsesFixedTokens(t *testing.T) {
+	mw := newAuthz(WithTokens("articles", "read"))
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t, []string{"alice", "articles", "read"}), nil
 	}
@@ -421,8 +424,8 @@ func TestAbilityUsesFixedTokens(t *testing.T) {
 	request.AssertNotCalled(t, "Method")
 }
 
-func TestAbilityDeniesWhenFixedTokensDoNotMatch(t *testing.T) {
-	mw := Ability("articles", "write").(*authzMiddleware)
+func TestWithTokensDeniesWhenFixedTokensDoNotMatch(t *testing.T) {
+	mw := newAuthz(WithTokens("articles", "write"))
 	mw.open = func(string) (*casbin.SyncedEnforcer, error) {
 		return newTestEnforcer(t, []string{"alice", "articles", "read"}), nil
 	}
@@ -435,16 +438,11 @@ func TestAbilityDeniesWhenFixedTokensDoNotMatch(t *testing.T) {
 }
 
 func TestGuardOptionsLastOneWins(t *testing.T) {
-	mw := Authz(WithGuards("basic", "admin"), WithGuard("legacy")).(*authzMiddleware)
+	mw := newAuthz(WithGuards("basic", "admin"), WithGuard("legacy"))
 	assert.Equal(t, []string{"legacy"}, mw.guardsToCheck())
 	assert.Empty(t, mw.guards)
 
-	mw = Authz(WithGuard("legacy"), WithGuards("basic", "admin")).(*authzMiddleware)
+	mw = newAuthz(WithGuard("legacy"), WithGuards("basic", "admin"))
 	assert.Equal(t, []string{"basic", "admin"}, mw.guardsToCheck())
 	assert.Empty(t, mw.guard)
-}
-
-func TestAuthzSignatureWithGuardsAndTokens(t *testing.T) {
-	assert.Equal(t, "goravel:authz:any:basic,admin", Authz(WithGuards("basic", "admin")).Signature())
-	assert.Equal(t, "goravel:authz:tokens:articles,read", Ability("articles", "read").Signature())
 }

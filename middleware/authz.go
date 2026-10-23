@@ -4,7 +4,6 @@ package middleware
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/casbin/casbin/v2"
 	contractshttp "github.com/goravel/framework/contracts/http"
@@ -81,6 +80,12 @@ type authzMiddleware struct {
 // Goravel Auth user. The object is the route pattern (OriginPath) and the
 // action is the HTTP method. Every part can be replaced with an option.
 func Authz(options ...Option) contractshttp.Middleware {
+	return newAuthz(options...).Handle
+}
+
+// newAuthz builds the middleware. A Goravel 1.17 middleware is a plain
+// function, so Authz only keeps the Handle method.
+func newAuthz(options ...Option) *authzMiddleware {
 	settings := logging.Load()
 
 	m := &authzMiddleware{
@@ -110,21 +115,6 @@ func Authz(options ...Option) contractshttp.Middleware {
 // Authz does.
 func Ability(tokens ...string) contractshttp.Middleware {
 	return Authz(WithTokens(tokens...))
-}
-
-func (m *authzMiddleware) Signature() string {
-	signature := "goravel:authz"
-	switch {
-	case m.guard != "":
-		signature += ":" + m.guard
-	case len(m.guards) > 0:
-		signature += ":any:" + strings.Join(m.guards, ",")
-	}
-	if len(m.tokens) > 0 {
-		signature += ":tokens:" + strings.Join(m.tokens, ",")
-	}
-
-	return signature
 }
 
 func (m *authzMiddleware) Handle(ctx contractshttp.Context) {

@@ -267,15 +267,11 @@ func TestPolicyListCommand(t *testing.T) {
 		command := NewPolicyListCommand(testOpen(enforcer))
 		ctx := mocksconsole.NewContext(t)
 		ctx.EXPECT().Option("guard").Return("").Once()
-		ctx.EXPECT().Table(
-			[]string{"Ptype", "V0", "V1", "V2"},
-			[][]string{
-				{"p", "admin", "/admin/users", "GET"},
-				{"p", "editor", "/admin/posts", "POST"},
-				{"g", "alice", "admin"},
-				{"g", "bob", "editor"},
-			},
-		).Once()
+		ctx.EXPECT().Line(`Ptype  V0      V1            V2
+p      admin   /admin/users  GET
+p      editor  /admin/posts  POST
+g      alice   admin
+g      bob     editor`).Once()
 
 		require.NoError(t, command.Handle(ctx))
 	})
@@ -482,4 +478,20 @@ func listGroupingPolicies(t *testing.T, enforcer *casbin.SyncedEnforcer) [][]str
 	require.NoError(t, err)
 
 	return policies
+}
+
+func TestRenderTable(t *testing.T) {
+	assert.Equal(t,
+		"Ptype  V0     V1\n"+
+			"p      admin  /admin/users\n"+
+			"g      阿离     admin",
+		renderTable(
+			[]string{"Ptype", "V0", "V1"},
+			[][]string{
+				{"p", "admin", "/admin/users"},
+				{"g", "阿离", "admin"},
+			},
+		),
+		"cells must be padded by rune count so CJK text stays aligned",
+	)
 }
