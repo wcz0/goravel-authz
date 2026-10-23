@@ -6,8 +6,8 @@
 
 ## 环境要求
 
-- Go 1.25+
-- v1.17.x 对应 Goravel 1.17.x，v1.18.x 对应 Goravel 1.18.x
+- Go 1.23+
+- 本分支 v1.16.x 对应 Goravel 1.16.x，其他版本线见下方表格
 
 发布版本号对齐 Goravel 次版本，请选择与框架匹配的版本线：
 
@@ -15,11 +15,13 @@
 | --- | --- |
 | v1.18.x | v1.18.x |
 | v1.17.x | v1.17.x |
+| v1.16.x | v1.16.x |
+| v1.15.x | v1.15.x |
 
 ## 安装
 
 ```shell
-go get github.com/wcz0/goravel-authz@v1.17.1
+go get github.com/wcz0/goravel-authz@v1.16.0
 ```
 
 安装资源并执行数据库迁移：

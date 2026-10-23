@@ -10,8 +10,25 @@
 | --- | --- |
 | v1.18.x | v1.18.x |
 | v1.17.x | v1.17.x |
+| v1.16.x | v1.16.x |
+| v1.15.x | v1.15.x |
 
 v0.x 为旧命名，历史记录保留在下方。
+
+## [1.16.0] - 2026-10-23
+
+### Added
+
+- 新增 Goravel 1.16 版本线，`go get github.com/wcz0/goravel-authz@v1.16.0` 安装。
+- 与其余版本线相同的 Casbin 能力：Adapter 批量增删、单条/批量更新、按条件更新与过滤加载，以及事务回滚。
+- 与其余版本线相同的 HTTP 中间件、Gate 接入、Artisan 策略命令和 Goravel 日志集成。
+
+### Changed
+
+- `package:install` 按 1.16 的约定注册资源：provider 写入 `config/app.go`，迁移写入 `database/kernel.go`，配置、模型与迁移文件直接生成。
+- 命令改为读取 `ctx.Arguments()`，1.16 的 console 没有 `command.Argument`。
+- 日志统一通过 `log.Writer` 输出，1.16 的 `Log.Channel()` 返回 `Writer` 而不是 `Log`。
+- 依赖 Goravel framework v1.16.8、goravel/sqlite v1.4.0，Go 1.23+。
 
 ## [1.17.1] - 2026-10-23
 
