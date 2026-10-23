@@ -6,8 +6,8 @@
 
 ## 环境要求
 
-- Go 1.25+
-- v1.17.x 对应 Goravel 1.17.x，v1.18.x 对应 Goravel 1.18.x
+- Go 1.24+
+- 本分支 v1.15.x 对应 Goravel 1.15.x，其他版本线见下方表格
 
 发布版本号对齐 Goravel 次版本，请选择与框架匹配的版本线：
 
@@ -15,11 +15,13 @@
 | --- | --- |
 | v1.18.x | v1.18.x |
 | v1.17.x | v1.17.x |
+| v1.16.x | v1.16.x |
+| v1.15.x | v1.15.x |
 
 ## 安装
 
 ```shell
-go get github.com/wcz0/goravel-authz@v1.17.1
+go get github.com/wcz0/goravel-authz@v1.15.0
 ```
 
 安装资源并执行数据库迁移：
@@ -288,4 +290,4 @@ go run . artisan authz:enforce admin /api/users GET --guard=admin
 go test ./...
 ```
 
-适配器测试通过 Goravel ORM 直接跑在真实的 SQLite 数据库上，包含缓存往返测试，不需要 Docker 或外部数据库。
+适配器测试使用内存事务 Store。真实的 SQLite 往返测试只在 v1.16、v1.17、v1.18 版本线提供，因为官方 `goravel/sqlite` 驱动要求 Goravel 1.16。

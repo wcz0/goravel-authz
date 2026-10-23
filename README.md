@@ -6,8 +6,8 @@ Authorization for [Goravel](https://github.com/goravel/goravel) built on [Casbin
 
 ## Requirements
 
-- Go 1.25+
-- Goravel 1.17.x for the v1.17.x line, Goravel 1.18.x for the v1.18.x line
+- Go 1.24+
+- Goravel 1.15.x for this v1.15.x line; the other lines are listed below
 
 Release lines follow the Goravel minor version. Pick the line that matches your framework:
 
@@ -15,11 +15,13 @@ Release lines follow the Goravel minor version. Pick the line that matches your 
 | --- | --- |
 | v1.18.x | v1.18.x |
 | v1.17.x | v1.17.x |
+| v1.16.x | v1.16.x |
+| v1.15.x | v1.15.x |
 
 ## Installation
 
 ```shell
-go get github.com/wcz0/goravel-authz@v1.17.1
+go get github.com/wcz0/goravel-authz@v1.15.0
 ```
 
 Install the package resources and migrate:
@@ -289,4 +291,4 @@ Set `casbin` to `true` to forward Casbin's model, policy and enforce output to t
 go test ./...
 ```
 
-The adapter tests run against a real SQLite database through the Goravel ORM, including the cache round trip, so no Docker or external database is required.
+The adapter tests run against the in-memory transactional store. The real SQLite round trip is part of the v1.16, v1.17 and v1.18 lines only, because the official `goravel/sqlite` driver requires Goravel 1.16.
