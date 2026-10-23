@@ -15,6 +15,12 @@
 
 v0.x 为旧命名，历史记录保留在下方。
 
+## [1.18.2] - 2026-10-23
+
+### Fixed
+
+- 修复 `package:install` 生成的 `config/casbin.go` 与迁移文件：import 指向应用自己的模块（`<app>/app/facades`、`<app>/database/migrations`），此前指向本包路径，安装后的项目无法编译；在应用目录之外运行安装器时回退到框架 facades。
+
 ## [1.18.1] - 2026-10-23
 
 ### Added
