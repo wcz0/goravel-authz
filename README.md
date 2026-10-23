@@ -19,7 +19,7 @@ Release lines follow the Goravel minor version. Pick the line that matches your 
 ## Installation
 
 ```shell
-go get github.com/wcz0/goravel-authz@v1.18.0
+go get github.com/wcz0/goravel-authz@v1.18.1
 ```
 
 Install the package resources and migrate:
