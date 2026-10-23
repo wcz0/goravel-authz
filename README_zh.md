@@ -1,22 +1,46 @@
 # Goravel Authz
 
-基于 [Casbin](https://casbin.org) 的 [Goravel](https://github.com/goravel/goravel) 授权扩展库：支持 ACL、RBAC、ABAC 模型，策略存放在你自己的数据库表中，可以同时运行多套互相独立的 Enforcer，通过 Goravel 缓存加速策略加载，并提供路由中间件。
+[![CI](https://github.com/wcz0/goravel-authz/actions/workflows/ci.yml/badge.svg?branch=goravel-1.17)](https://github.com/wcz0/goravel-authz/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/wcz0/goravel-authz.svg)](https://pkg.go.dev/github.com/wcz0/goravel-authz)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-[English](./README.md) · [更新日志](./CHANGELOG.md)
+[English](./README.md) · **简体中文** · [更新日志](./CHANGELOG.md)
+
+基于 [Casbin](https://casbin.org) 的 [Goravel](https://github.com/goravel/goravel) 授权扩展库。策略存放在你自己的数据库表中，每套模型拥有独立的 Enforcer、数据表与缓存，再由路由中间件把策略变成 HTTP 决策。
+
+- **Casbin 模型** — 支持 ACL、RBAC、ABAC，模型文本由你提供；安装时会生成一份可直接使用的 RBAC 模型，开箱即可生效。
+- **互相独立的 Enforcer** — 一套模型一个实例，各自拥有数据表、数据库连接、模型文本和缓存；首次使用时创建，可并发使用。
+- **完整的 Adapter 能力** — 实现了 Casbin 的 `BatchAdapter`、`UpdatableAdapter` 和 `FilteredAdapter`，批量、更新与过滤操作无需额外代码即可持久化。
+- **事务写入** — 所有多行写入都在事务中执行，批量操作失败时数据表保持不变。
+- **策略缓存** — 走 Goravel 缓存（内存、文件或 Redis），每次写入后自动失效。
+- **原生 Goravel 集成** — 路由中间件、`Gate` 能力、`Auth` 用户、日志与 Artisan 命令。
+
+## 目录
+
+- [环境要求](#环境要求)
+- [安装](#安装)
+- [配置](#配置)
+- [使用](#使用)
+- [中间件](#中间件)
+- [策略管理](#策略管理)
+- [日志](#日志)
+- [测试](#测试)
+- [参与贡献](#参与贡献)
+- [许可证](#许可证)
 
 ## 环境要求
 
-- Go 1.25+
-- 本分支 v1.17.x 对应 Goravel 1.17.x，其他版本线见下方表格
+- Go 1.24 或更高版本
+- Goravel 1.17.x —— 本分支即 v1.17.x 版本线
 
-发布版本号对齐 Goravel 次版本，请选择与框架匹配的版本线：
+版本号对齐 Goravel 次版本，每条版本线由独立分支发布，请选择与框架匹配的版本线：
 
-| goravel-authz | Goravel |
-| --- | --- |
-| v1.18.x | v1.18.x |
-| v1.17.x | v1.17.x |
-| v1.16.x | v1.16.x |
-| v1.15.x | v1.15.x |
+| goravel-authz | 分支 | Goravel |
+| --- | --- | --- |
+| v1.18.x | `main` | v1.18.x |
+| v1.17.x | `goravel-1.17` | v1.17.x |
+| v1.16.x | `goravel-1.16` | v1.16.x |
+| v1.15.x | `goravel-1.15` | v1.15.x |
 
 ## 安装
 
@@ -24,14 +48,14 @@
 go get github.com/wcz0/goravel-authz@v1.17.2
 ```
 
-安装资源并执行数据库迁移：
+安装扩展资源并执行迁移：
 
 ```shell
 go run . artisan package:install github.com/wcz0/goravel-authz
 go run . artisan migrate
 ```
 
-`package:install` 会把 `&authz.ServiceProvider{}` 注册到 `bootstrap/providers.go`，生成 `config/casbin.go`、`config/casbin-rbac-model.conf`，并创建、注册 `casbin_rules` 表的迁移文件。
+`package:install` 会在应用启动文件中注册 `&authz.ServiceProvider{}`，生成 `config/casbin.go` 与 `config/casbin-rbac-model.conf`，并创建、注册 `casbin_rules` 迁移。`package:uninstall` 会把以上内容全部撤销。
 
 ## 配置
 
@@ -58,7 +82,7 @@ func init() {
 }
 ```
 
-`models` 中的每一项就是一套模型。每套模型拥有自己的数据表、数据库连接、Casbin 模型和缓存，因此同一个应用里可以并存多个 Enforcer：
+`models` 下的每一项就是一套模型：它拥有自己的数据表、数据库连接、Casbin 模型与缓存。这正是同一个应用里可以同时运行多套 Enforcer 的原因。
 
 ```go
 import "github.com/wcz0/goravel-authz/models"
@@ -75,18 +99,18 @@ func (r *AdminRule) TableName() string {
     return "admin_casbin_rules"
 }
 
-// 可选：指定数据库连接。返回空字符串表示使用默认连接。
+// 可选：指定数据库连接，留空表示使用默认连接。
 func (r *AdminRule) Connection() string {
     return "mysql"
 }
 
-// Casbin 模型："file" 从配置目录解析，"text" 按原样解析。
+// Casbin 模型："file" 从 config 目录解析，"text" 按原样解析。
 func (r *AdminRule) Model() (string, string) {
     return "file", "casbin-rbac-model.conf"
 }
 
-// 缓存：是否启用、缓存 store 名称、键名。键名为空时根据表名自动生成，
-// 不同 Enforcer 因此不会共用同一条缓存。
+// 缓存：是否启用、缓存驱动名、缓存键。键留空时按表名生成，
+// 因此不同 Enforcer 不会共用同一条缓存。
 func (r *AdminRule) Cache() (bool, string, string) {
     return true, "redis", "goravel-authz:admin"
 }
@@ -109,29 +133,29 @@ config.Add("casbin", map[string]any{
 
 ### 缓存
 
-缓存完全使用 Goravel 的缓存，任意已配置的 store 都可以。在 `Cache()` 中填写 store 名称（例如 `redis`），并在 `config/cache.go` 中配置同名的 store 即可。策略记录以 JSON 形式存储，内存、文件、Redis 驱动都可以直接使用。
+缓存走 Goravel 缓存，任何已配置的驱动都可以使用。在 `Cache()` 中指定驱动名（例如 `redis`），并在 `config/cache.go` 中保持同一驱动配置即可。策略行以 JSON 存储，内存、文件与 Redis 驱动都兼容。
 
-每次写入策略（`AddPolicy`、`AddPolicies`、`RemovePolicy`、`RemovePolicies`、`RemoveFilteredPolicy`、各个更新方法和 `SavePolicy`）以及模型事件触发时都会自动清除缓存。默认缓存 5 分钟，也可以通过可选的 `CacheTTL()` 方法自定义。
+每次策略写入（`AddPolicy`、`AddPolicies`、`RemovePolicy`、`RemovePolicies`、`RemoveFilteredPolicy`、各更新方法与 `SavePolicy`）以及模型事件都会刷新缓存。默认缓存 5 分钟，也可以实现 `CacheTTL()` 自定义。
 
 ### Gate
 
-服务提供者启动后，包含逗号的 Gate 能力会交给 Casbin 判断：
+服务提供者启动后，带逗号的 Gate 能力会转交给 Casbin：
 
 ```go
 allowed := facades.Gate().WithContext(ctx).Allows("articles,read", map[string]any{
-    "guard": "admin", // 可选，留空使用 casbin.default
+    "guard": "admin", // 可选，默认取 casbin.default
 })
 ```
 
-等价于 `Enforce(subject, "articles", "read")`。subject 优先取 `middleware.SetSubject` 写入的值，没有时使用 Goravel Auth 当前用户 ID。不含逗号的能力仍然交给 Gate 原有逻辑处理。把 `casbin.gate.enabled` 设为 `false` 可以关闭该钩子。
+它会被求值为 `Enforce(subject, "articles", "read")`。subject 取 `middleware.SetSubject` 写入的值；该值为空时回退到已登录的 Goravel Auth 用户 ID。不带逗号的能力仍交给 Gate 原有实现。把 `casbin.gate.enabled` 设为 `false` 可关闭该钩子。
 
 ## 使用
 
 ```go
 import authz "github.com/wcz0/goravel-authz/facades"
 
-e := authz.Enforcer()            // casbin.default 对应的 Enforcer
-admin := authz.Enforcer("admin") // 第二套独立的 Enforcer
+e := authz.Enforcer()            // casbin.default
+admin := authz.Enforcer("admin") // 第二套互相独立的 Enforcer
 
 e.AddPolicy("admin", "/admin-api/users", "GET")
 admin.AddPolicy("admin", "/api/users", "GET")
@@ -139,11 +163,11 @@ admin.AddPolicy("admin", "/api/users", "GET")
 allowed, err := e.Enforce("alice", "/admin-api/users", "GET")
 ```
 
-Enforcer 在第一次使用时创建，按模型名称缓存，并且是并发安全的（`casbin.SyncedEnforcer`）。
+Enforcer 在首次使用时创建，按模型名缓存，并且可以并发使用（`casbin.SyncedEnforcer`）。创建过程按模型加锁，某套模型的首次加载再慢也不会阻塞其他模型。
 
 ### 批量、更新与过滤操作
 
-Adapter 实现了 Casbin 的批量、更新和过滤接口，因此 Enforcer 上对应的方法会自动持久化：
+Adapter 实现了 Casbin 的批量、可更新与可过滤接口，对应的 Enforcer 方法会自动持久化：
 
 ```go
 e.AddPolicies([][]string{{"editor", "/articles", "GET"}, {"editor", "/articles", "POST"}})
@@ -154,7 +178,7 @@ e.UpdatePolicies(oldRules, newRules)
 e.UpdateFilteredPolicies([][]string{{"editor", "/articles", "read"}}, 1, "/articles")
 ```
 
-`LoadFilteredPolicy` 只加载一部分策略：
+`LoadFilteredPolicy` 只加载存储中的一部分策略：
 
 ```go
 import "github.com/wcz0/goravel-authz/adapters"
@@ -162,9 +186,9 @@ import "github.com/wcz0/goravel-authz/adapters"
 err := e.LoadFilteredPolicy(adapters.Filter{P: []string{"alice"}})
 ```
 
-`adapters.Filter` 与 Casbin 的文件过滤器一致（`P`、`G`、`G1` 到 `G5`）；`adapters.FilterFunc` 可以传入任意判断函数。加载了过滤后的策略时，`SavePolicy` 会被拒绝，因为保存会删除没有加载的行。默认的 ORM 存储会把所有多行写入放在同一个事务中，批量操作失败时数据表保持不变。
+`adapters.Filter` 对应 Casbin 的文件过滤器（`P`、`G`、`G1` 到 `G5`），`adapters.FilterFunc` 接收任意判定函数。处于过滤加载状态时 `SavePolicy` 会被拒绝，否则保存会删除那些未被加载的行。默认 ORM 存储把每次多行写入放在事务中，批量失败时数据表保持原样。
 
-当其他进程修改了策略，需要显式重载当前进程的 Enforcer：
+当其他进程修改了策略，需要显式重载当前 Enforcer：
 
 ```go
 import "github.com/wcz0/goravel-authz"
@@ -174,7 +198,7 @@ err := authz.Reload("basic")
 
 ## 中间件
 
-`middleware.Authz` 用策略保护路由，需要注册在认证中间件之后：
+`middleware.Authz` 用你的策略保护路由，请注册在认证中间件之后：
 
 ```go
 import (
@@ -189,12 +213,12 @@ facades.Route().Middleware(middleware.Authz()).Group(func(router route.Router) {
 
 默认行为：
 
-- **guard**：`casbin.default`，可用 `middleware.WithGuard("admin")` 切换到其他模型，或用 `middleware.WithGuards("basic", "admin")` 在其中任意一个模型放行时通过；
-- **subject**：优先使用 `middleware.SetSubject` 写入请求上下文的值，没有时回退到 Goravel Auth 当前用户 ID；
-- **object**：路由模板 `OriginPath()`（例如 `/users/{id}`），为空时回退到 `Path()`；
+- **guard**：`casbin.default`。用 `middleware.WithGuard("admin")` 指定其他模型，或用 `middleware.WithGuards("basic", "admin")` 让任一模型放行即可通过；
+- **subject**：`middleware.SetSubject` 写入请求上下文的值，为空时回退到已登录的 Goravel Auth 用户 ID；
+- **object**：路由模式 `OriginPath()`（例如 `/users/{id}`），为空时回退到 `Path()`；
 - **action**：HTTP 方法。
 
-subject 不是 Goravel Auth 用户 ID 时，用认证中间件写入：
+当 subject 不是 Goravel Auth 用户 ID 时，由认证中间件写入：
 
 ```go
 func Authenticate(ctx contractshttp.Context) {
@@ -203,7 +227,7 @@ func Authenticate(ctx contractshttp.Context) {
 }
 ```
 
-默认行为不适用时可以替换解析逻辑：
+默认解析方式不适用时可以替换：
 
 ```go
 middleware.Authz(
@@ -220,19 +244,19 @@ middleware.Authz(
 )
 ```
 
-当 `Enforce(subject, object, action)` 返回 true 时放行。subject 缺失、解析器报错或策略未命中时返回 `403` 和 JSON 消息；Enforcer 出错时返回 `500`。其他进程修改策略后，调用 `authz.Reload` 让当前进程的 Enforcer 重新加载。
+`Enforce(subject, object, action)` 返回 true 即放行。subject 缺失、解析出错或没有匹配策略时返回 `403` 与 JSON 消息；Enforcer 自身出错返回 `500`。其他进程修改策略后，调用 `authz.Reload` 刷新本地 Enforcer。
 
-请求可以由多套模型中的任意一套放行：
+一个请求可能被多套模型授权时，可以同时启用多个模型：
 
 ```go
 middleware.Authz(middleware.WithGuards("basic", "admin"))
 ```
 
-中间件依次检查，任意一个模型放行就通过。如果全部拒绝且其中有 Enforcer 执行失败，返回 `500`；全部正常拒绝时返回 `403`。`middleware.WithGuard` 与 `middleware.WithGuards` 会互相替换，以最后一个选项为准。
+中间件会依次检查，任一模型放行即通过。如果全部拒绝且其中有 Enforcer 出错，返回 `500`；全部正常拒绝则返回 `403`。`middleware.WithGuard` 与 `middleware.WithGuards` 互相覆盖，以最后一个选项为准。
 
-### 能力检查
+### 固定能力
 
-`middleware.Ability` 使用固定的 Casbin 请求参数，而不是请求路径和 HTTP 方法：
+`middleware.Ability` 用固定的 Casbin 请求值代替路径与方法：
 
 ```go
 facades.Route().Get("/articles", ArticleController{}.Index).Middleware(
@@ -240,11 +264,11 @@ facades.Route().Get("/articles", ArticleController{}.Index).Middleware(
 )
 ```
 
-等价于 `Enforce(subject, "articles", "read")`。在 `Authz` 中也可以使用 `middleware.WithTokens(...)`；这些 token 会替换 object 和 action，因此同样适用于请求参数更多的模型。
+它会被求值为 `Enforce(subject, "articles", "read")`。在 `Authz` 内部可以用 `middleware.WithTokens(...)` 达到同样效果；这些 token 会替换 object 与 action，因此请求参数更多的模型同样适用。
 
-## 命令行管理策略
+## 策略管理
 
-服务提供者会为每个模型注册 Artisan 命令：
+服务提供者为每套模型注册了 Artisan 命令：
 
 ```shell
 go run . artisan authz:policy:list
@@ -255,34 +279,34 @@ go run . artisan authz:group:remove alice admin
 go run . artisan authz:enforce alice /admin/users GET
 ```
 
-所有命令都支持 `--guard`（或 `-g`）切换到其他模型：
+所有命令都支持 `--guard`（或 `-g`）指定其他模型：
 
 ```shell
 go run . artisan authz:policy:add admin /api/users GET --guard=admin
 go run . artisan authz:enforce admin /api/users GET --guard=admin
 ```
 
-参数会原样传给 Casbin，因此带 domain 等更多 token 的模型同样适用。由于 Casbin 会静默接受缺少字段的规则，命令会先按模型校验参数数量。
+参数会原样传给 Casbin，因此带更多参数（例如域）的模型同样可用。命令会按模型校验参数个数，因为 Casbin 对参数不足的规则会静默接受。
 
-写入会立即落库并刷新策略缓存。其他进程仍持有内存中的策略，需要调用 `authz.Reload` 或重启后才能看到变更。
+写入会落到数据库并刷新策略缓存。其他进程仍持有自己的内存策略，需要调用 `authz.Reload` 或重启才能生效。
 
 ## 日志
 
-授权事件通过 Goravel 日志写入，沿用 `config/logging.go` 中配置的通道、级别和格式：
+授权事件通过 Goravel 日志输出，因此沿用 `config/logging.go` 中配置的通道、级别与格式：
 
 ```go
 "log": map[string]any{
     "enabled": true,  // 总开关
     "channel": "",    // 留空使用 logging.default
-    "allowed": false, // 放行的请求以 info 级别记录
-    "denied":  true,  // 拒绝的请求以 warning 级别记录
-    "casbin":  false, // 把 Casbin 内部日志以 debug 级别交给 Goravel
+    "allowed": false, // 以 info 级别记录放行请求
+    "denied":  true,  // 以 warning 级别记录拒绝请求
+    "casbin":  false, // 以 debug 级别转发 Casbin 内部诊断
 },
 ```
 
-拒绝记录包含 guard、subject、object、action 和 `reason`（`policy` 或 `missing subject`）。subject 解析失败以及 enforcer 创建、执行失败会以 error 级别记录并附带错误。enforcer 首次创建和 `authz.Reload` 以 info 级别记录。
+拒绝请求会带上 guard、subject、object、action 以及 `reason`（`policy` 或 `missing subject`）。subject 解析与 Enforcer 出错会以 error 级别连同错误一起记录。Enforcer 创建和 `authz.Reload` 以 info 级别记录。
 
-`casbin` 设为 true 后，Casbin 的 model、policy 和 enforce 输出会以 debug 级别写入同一通道；默认关闭，因为内容较多。在未启动 Goravel 应用的环境里包不会写日志，单元测试和独立工具无需配置 logger。
+把 `casbin` 设为 `true` 可以把 Casbin 的模型、策略与判定输出以 debug 级别转发到同一通道，默认关闭是因为内容较多。在没有启动 Goravel 应用的环境里，本包保持静默，因此单元测试和独立工具不需要配置日志。
 
 ## 测试
 
@@ -290,4 +314,20 @@ go run . artisan authz:enforce admin /api/users GET --guard=admin
 go test ./...
 ```
 
-适配器测试通过 Goravel ORM 直接跑在真实的 SQLite 数据库上，包含缓存往返测试，不需要 Docker 或外部数据库。
+适配器测试通过 Goravel ORM 跑在真实的 SQLite 数据库上，包含缓存往返测试，不需要 Docker 或外部数据库。CI 还会用 `-race` 跑一遍完整测试。
+
+## 参与贡献
+
+欢迎提交 issue 和 pull request。提交前请先执行：
+
+```shell
+gofmt -l .
+go vet ./...
+go test ./...
+```
+
+CI 会在每条版本线上执行同样的检查并额外运行 `go test -race`；如果分支名与所依赖的 Goravel 版本不一致，CI 会直接拒绝。
+
+## 许可证
+
+[MIT](./LICENSE) © 2024 wcz0
